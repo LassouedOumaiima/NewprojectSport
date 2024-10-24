@@ -1,0 +1,236 @@
+package fr.ca.cats.p1354.s3600.svcdem.service.impl;
+
+import fr.ca.cats.p0070.s1889.logging.service.Logger;
+import fr.ca.cats.p0070.s1889.logging.service.LoggerService;
+import fr.ca.cats.p1354.DemandeQualificationKey;
+import fr.ca.cats.p1354.DemandeQualificationValue;
+import fr.ca.cats.p1354.s3600.svcdem.config.ConsumerConfig;
+import fr.ca.cats.p1354.s3600.svcdem.model.DictionaryPrediction;
+import fr.ca.cats.p1354.s3600.svcdem.model.Prediction;
+import fr.ca.cats.p1354.s3600.svcdem.model.SchemaResultQualification;
+import fr.ca.cats.p1354.s3600.svcdem.service.AESUtil;
+import fr.ca.cats.p1354.s3600.svcdem.service.ConsumerService;
+import fr.ca.cats.p1354.s3600.svcdem.service.ProducerService;
+import fr.ca.cats.p1354.s3600.svcdem.service.SvcdemService;
+import org.apache.kafka.clients.consumer.*;
+import org.apache.kafka.common.TopicPartition;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Async;
+import org.springframework.stereotype.Service;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+@Service
+public class ConsumerServiceImpl implements ConsumerService {
+
+    private static final Logger LOGGER = LoggerService.getLogger(ConsumerServiceImpl.class);
+
+    @Value("${topic}")
+    String topic ;
+
+    @Value("${pollDuration}")
+    String pollDuration ;
+
+    ConsumerConfig consumerConfig;
+
+    SvcdemService svcdemService;
+
+    ProducerService producerService ;
+
+    AESUtil aesUtil ;
+
+    private static Consumer<DemandeQualificationKey, DemandeQualificationValue> consumerKafka;
+    private static Consumer<DemandeQualificationKey, DemandeQualificationValue> consumerKafkaRestart;
+
+    static DictionaryPrediction dictionary ;
+
+    private static AtomicBoolean isConsumerClosed = new AtomicBoolean(false);
+
+    @Autowired
+    public ConsumerServiceImpl(SvcdemService svcdemService, ProducerService producerService, ConsumerConfig consumerConfig, AESUtil aesUtil) {
+        this.svcdemService = svcdemService;
+        this.producerService = producerService ;
+        this.consumerConfig = consumerConfig ;
+        this.aesUtil = aesUtil ;
+    }
+
+    public void subscribeConsumer(Consumer<DemandeQualificationKey, DemandeQualificationValue> consumerKafka) {
+       // consumerKafka = consumerConfig.consumerKafka();
+        if(isConsumerClosed.get()){
+            isConsumerClosed.set(false);
+        }
+        consumerKafka.subscribe(Collections.singletonList(topic), new ConsumerRebalanceListener() {
+            @Override
+            public void onPartitionsRevoked(Collection<TopicPartition> partitions) {
+                try {
+                    LOGGER.info("\n*** Partitions revoked, committing current offsets");
+                    if (!isConsumerClosed.get()) {
+                        consumerKafka.commitSync();
+                    } else {
+                        LOGGER.debug("\n*** Consumer was closed before committing");
+                    }
+                } catch (CommitFailedException e) {
+                    isConsumerClosed.set(true);
+                    restartConsumer();
+                    LOGGER.error("\n*** Error from consumer while commiting, restarting consumer");
+                }
+
+                LOGGER.info("\n*** Partitions revoked, current offset has been committed\n");
+            }
+
+            @Override
+            public void onPartitionsAssigned(Collection<TopicPartition> partitions) {
+                try {
+                    if (!isConsumerClosed.get()) {
+                        consumerKafka.commitSync();
+                    } else {
+                        LOGGER.debug("\n*** Consumer was closed before committing");
+                    }
+                } catch (CommitFailedException e) {
+                    isConsumerClosed.set(true);
+                    restartConsumer();
+                    LOGGER.error("\n*** Error from consumer while commiting, restarting consumer");
+
+                }
+
+                LOGGER.info("\n*** Partitions (re)assigned: \n"+partitions.toString());
+            }
+
+        });
+
+    }
+
+    public void restartConsumer() {
+        try {
+            if(!isConsumerClosed.get()){
+                consumerKafka.close();
+            } else {
+                LOGGER.debug("\n*** Consumer is already closed");
+            }
+        } catch (Exception e) {
+            LOGGER.error("\n*** Failed to close consumer: " + e.getMessage() + "\n");
+        }
+
+        System.out.println("\n*** Before restart : " +consumerKafka);
+        consumerKafka = consumerConfig.consumerKafka();
+        System.out.println("\n*** After restart : " +consumerKafka);
+        subscribeConsumer(consumerKafka);
+
+        LOGGER.info("\n*** Consumer restarted and subscribed to the topic again");
+
+    }
+
+    public void closeConsumer() {
+        if(isConsumerClosed.compareAndSet(false,true)) {
+            try{
+                consumerKafka.close();
+                LOGGER.info("\n*** Consumer closed successfully");
+            } catch(Exception exception) {
+                LOGGER.error("\n*** Error while closing consumer: " + exception.getMessage() + "\n");
+            }
+        } else {
+            LOGGER.info("\n*** Consumer was already closed");
+        }
+    }
+
+    /**
+     * Cette méthode réalise une action de poll sur le topic Kafka contenant les demande de qualifications.
+     * L'action de poll se traduit par un sondage du topic.
+     * Le consumer interroge le topic afin de savoir s'il a des messages à consommer.
+     */
+    @Async("taskExecutor")
+    public void consumerPoll() {
+
+        LOGGER.info("\n*** consumerPoll  \n");
+        dictionary = svcdemService.getDictionary();
+
+        try {
+            while (true) {
+                try{
+                    if(isConsumerClosed.get()) {
+                        LOGGER.info("\n*** Consumer is closed, exiting");
+                        break;
+                    }
+
+                    ConsumerRecords<DemandeQualificationKey, DemandeQualificationValue> records = consumerKafka.poll(Duration.ofMillis((Integer.parseInt(pollDuration))));
+                    for (ConsumerRecord<DemandeQualificationKey, DemandeQualificationValue> record : records) {
+                        DemandeQualificationValue qualificationValue = record.value() ;
+                        LOGGER.info("\n-->Duration MailId= " + qualificationValue.getMailId() +"\n");
+                        Instant startEvent = Instant.now();
+                        processDemandeQualificationData(qualificationValue);
+                        Instant endEvent = Instant.now();
+                        Duration duration= Duration.between(startEvent, endEvent);
+                        LOGGER.info("\n-->Duration record= "+ duration.getSeconds()+"sec "+duration.toMillis()+"ms\n");
+                    }
+                    consumerKafka.commitSync();
+
+                } catch(CommitFailedException exp) {
+                    LOGGER.error("\n*** Error from consumer while commiting "+ exp.getMessage() + "\n");
+                    isConsumerClosed.set(true);
+                    restartConsumer();
+                } catch(Exception exception){
+                    if(exception.getMessage().contains("*** Consumer is closed")){
+                        LOGGER.error("\n*** Error attempting to use a closed consumer, stopping");
+                    } else {
+                        LOGGER.error("\n*** Error while polling from topic "+exception.getMessage() + "\n");
+                    }
+                    break;
+                }
+            }/**End of while loop*/
+        } finally {
+            closeConsumer();
+        }
+    }
+
+    /**
+     * Cette méthode déroule le traitement d'une demande de qualification :
+     * 1) Réalise une action de commit vers le broker Kafka pour indiquer où il en est dans le traitement des messages du topic.
+     * 2) Récupération du dictionnaire courant.
+     * 3) Envoie la demande de qualification et le dictionnaire courant à l'API ress-prediction. Récupère un résultat de qualification.
+     * 4) Envoie le résultat de qualification au logiciel de messagerie.
+     * 5) Envoie le résultat de qualification au producer Kafka afin qu'il traite la donnée et la prépare à l'insertion en topic.
+     *
+     * @param qualificationValue Demande de qualification extraite du topic Kafka
+     */
+    public void processDemandeQualificationData(DemandeQualificationValue qualificationValue){
+        try {
+            LOGGER.info("\n*** processDemandeQualificationData  \n");
+            SchemaResultQualification schemaResultQualification = getSchemaResultQualification(qualificationValue, dictionary) ;
+            svcdemService.sendWebhook(schemaResultQualification, qualificationValue.getWebhookUri().toString()) ;
+            /** Publish prediction into topic even if sending qualification result over webhook failed*/
+            producerService.processResultQualificationDataToPublish(dictionary.getDictionary_version(),schemaResultQualification,qualificationValue.getDatetimeRequest().toString());
+        } catch(Exception exception) {
+            LOGGER.error("\n*** Error from consumer while processing demandeQualification for MailId = "+ qualificationValue.getMailId().toString()+"\n"+ exception.getMessage() + "\n");
+        } 	/**Send qualification result through webhook*/
+    }
+
+    /**
+     * Cette méthode envoie la demande de qualification au service de prédiction et récupère un résultat de qualification.
+     * Avant d'envoyer la demande de qualification, elle réalise un déchiffrage du corps du mail de l'utilisateur.
+     * @param qualificationValue Demande de qualification extraite du topic Kafka
+     * @param dictionary Dictionnaire courant
+     * @return un résultat de qualification
+     */
+    public SchemaResultQualification getSchemaResultQualification(DemandeQualificationValue qualificationValue, DictionaryPrediction dictionary){
+        SchemaResultQualification schemaResultQualification = null ;
+        try{
+            LOGGER.info("\n*** Processing data for MailId = " + qualificationValue.getMailId().toString());
+            Prediction prediction = svcdemService.getPrediction(aesUtil.decrypt(qualificationValue.getMailBody().toString())) ;
+            if (null == prediction){
+                LOGGER.info("\n*** Prediction could not take place for MailId = " + qualificationValue.getMailId().toString());
+                schemaResultQualification = svcdemService.postProcessingError(qualificationValue, dictionary);
+            }else{
+                LOGGER.info("\n*** Prediction has been retrieved from ML model: post-processing takes place for MailId = " + qualificationValue.getMailId().toString());
+                schemaResultQualification =  svcdemService.postProcossing(dictionary, prediction, qualificationValue);
+            }
+        } catch(Exception exception) {
+            LOGGER.error("\n*** Error while getting resultQualification for MailId = "+ qualificationValue.getMailId().toString() + "\n"+exception.getMessage());
+        }
+        return schemaResultQualification ;
+    }
+
+}
