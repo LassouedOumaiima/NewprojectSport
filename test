@@ -1,129 +1,14 @@
-import fr.ca.cats.p0070.s1889.logging.service.Logger;
-import fr.ca.cats.p0070.s1889.logging.service.LoggerService;
-import fr.ca.cats.p1354.DemandeQualificationKey;
-import fr.ca.cats.p1354.DemandeQualificationValue;
-import fr.ca.cats.p1354.s3600.svcdem.config.ConsumerConfig;
-import fr.ca.cats.p1354.s3600.svcdem.model.DictionaryPrediction;
-import fr.ca.cats.p1354.s3600.svcdem.model.Prediction;
-import fr.ca.cats.p1354.s3600.svcdem.model.SchemaResultQualification;
-import fr.ca.cats.p1354.s3600.svcdem.service.AESUtil;
-import fr.ca.cats.p1354.s3600.svcdem.service.ConsumerService;
-import fr.ca.cats.p1354.s3600.svcdem.service.ProducerService;
-import fr.ca.cats.p1354.s3600.svcdem.service.SvcdemService;
-import org.apache.kafka.clients.consumer.Consumer;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.common.TopicPartition;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-
-import java.time.Duration;
-import java.util.Collections;
-import java.util.Collection;
-import java.util.concurrent.atomic.AtomicBoolean;
-
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
-
-@ExtendWith(MockitoExtension.class)
-public class ConsumerServiceImplTest {
-
-    @InjectMocks
-    private ConsumerServiceImpl consumerService;
-
-    @Mock
-    private SvcdemService svcdemService;
-
-    @Mock
-    private ProducerService producerService;
-
-    @Mock
-    private ConsumerConfig consumerConfig;
-
-    @Mock
-    private AESUtil aesUtil;
-
-    @Mock
-    private Consumer<DemandeQualificationKey, DemandeQualificationValue> consumerKafka;
-
-    @Mock
-    private ConsumerRecords<DemandeQualificationKey, DemandeQualificationValue> records;
-
-    @Mock
-    private DictionaryPrediction dictionary;
-
-    private DemandeQualificationValue demandeQualificationValue;
-
-    @BeforeEach
-    void setUp() {
-        // Initialisation de l'objet DemandeQualificationValue
-        demandeQualificationValue = new DemandeQualificationValue();
-        demandeQualificationValue.setMailId("test@mail.com");
-        demandeQualificationValue.setMailBody("test body");
-        demandeQualificationValue.setWebhookUri("http://example.com/webhook");
-    }
-
-    @Test
-    void testSubscribeConsumer() {
-        consumerService.subscribeConsumer(consumerKafka);
-
-        // Vérifie que les abonnements sont configurés correctement
-        verify(consumerKafka).subscribe(Collections.singletonList(consumerService.topic), any());
-    }
-
-    @Test
-    void testConsumerPoll() {
-        when(consumerKafka.poll(any(Duration.class))).thenReturn(records);
-        when(records.isEmpty()).thenReturn(false);
-        when(records.count()).thenReturn(1);
-        when(records.iterator()).thenReturn(Collections.singletonList(new ConsumerRecord<>(
-                "topic", 0, 0, null, demandeQualificationValue)).iterator());
-
-        // Mock des méthodes pour éviter les appels réels
-        when(svcdemService.getDictionary()).thenReturn(dictionary);
-        when(aesUtil.decrypt(demandeQualificationValue.getMailBody())).thenReturn("decrypted body");
-        when(svcdemService.getPrediction(any())).thenReturn(new Prediction());
-
-        consumerService.consumerPoll();
-
-        // Vérifie que les méthodes sont appelées
-        verify(svcdemService).getDictionary();
-        verify(consumerKafka).commitSync();
-    }
-
-    @Test
-    void testProcessDemandeQualificationData() {
-        when(svcdemService.getPrediction(any())).thenReturn(new Prediction());
-        when(svcdemService.postProcossing(any(), any(), any())).thenReturn(new SchemaResultQualification());
-
-        consumerService.processDemandeQualificationData(demandeQualificationValue);
-
-        // Vérifie que les méthodes sont appelées correctement
-        verify(svcdemService).sendWebhook(any(), any());
-        verify(producerService).processResultQualificationDataToPublish(any(), any(), any());
-    }
-
-    @Test
-    void testRestartConsumer() {
-        // Simuler la fermeture et le redémarrage du consumer
-        consumerService.closeConsumer();
-        consumerService.restartConsumer();
-
-        // Vérifier que la méthode subscribeConsumer est appelée après le redémarrage
-        verify(consumerConfig).consumerKafka();
-        verify(consumerKafka).subscribe(any(), any());
-    }
-
-    @Test
-    void testCloseConsumer() {
-        consumerService.closeConsumer();
-        // Vérifie que la méthode close est appelée
-        verify(consumerKafka).close();
-    }
-
-    // Ajoutez d'autres tests pour couvrir d'autres scénarios selon les besoins.
-}
+public DictionaryPrediction getDictionary() {
+		DictionaryPrediction dictionary = null ;
+		try {
+			Instant startEvent = Instant.now();
+			ResponseEntity<DictionaryPrediction> response = restTemplate.getForEntity(urlsDict , DictionaryPrediction.class);
+			dictionary = response.getBody() ;
+			Instant endEvent = Instant.now();
+			Duration duration= Duration.between(startEvent, endEvent);
+			LOGGER.debug("\n-->Duration getDictionary()= "+ duration.getSeconds()+"sec "+duration.toMillis()+"ms\n");
+		} catch(Exception ex) {
+            LOGGER.error("\n*** Error while retrieving dictionary " +ex.getMessage());
+		}
+		return dictionary;
+	}
