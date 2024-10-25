@@ -1,14 +1,9 @@
-public DictionaryPrediction getDictionary() {
-		DictionaryPrediction dictionary = null ;
-		try {
-			Instant startEvent = Instant.now();
-			ResponseEntity<DictionaryPrediction> response = restTemplate.getForEntity(urlsDict , DictionaryPrediction.class);
-			dictionary = response.getBody() ;
-			Instant endEvent = Instant.now();
-			Duration duration= Duration.between(startEvent, endEvent);
-			LOGGER.debug("\n-->Duration getDictionary()= "+ duration.getSeconds()+"sec "+duration.toMillis()+"ms\n");
-		} catch(Exception ex) {
-            LOGGER.error("\n*** Error while retrieving dictionary " +ex.getMessage());
-		}
-		return dictionary;
-	}
+public static String decrypt(String text) {
+        try {
+            CipherAESGCMService cipherAESGCMService = new CipherAESGCMService();
+            return cipherAESGCMService.decrypt(text);
+        } catch (Exception e) {
+        	LOGGER.error("\n*** Error from AESUtil cannot decrypt the text {}", e.getMessage());
+            return "Decryption failed: " + e.getMessage();
+        }
+    }
