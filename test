@@ -1,36 +1,57 @@
 package fr.ca.cats.p1354.s3600.svcdem.service;
 
-import fr.ca.cats.p0070.s1889.logging.service.Logger;
-import fr.ca.cats.p0070.s1889.logging.service.LoggerService;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.MockitoAnnotations;
 
-/**
- * Classe de service de cryptage pour l'algorithme AES.
- */
-@Service
-public class AESUtil {
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
-	private static final Logger LOGGER = LoggerService.getLogger(AESUtil.class);
-	
-	CipherAESGCMService cipherAESGCMService ;
+class AESUtilTest {
 
-	@Autowired
-	public AESUtil(CipherAESGCMService cipherAESGCMService) {
-		this.cipherAESGCMService = cipherAESGCMService;
-	}
+    @Mock
+    private CipherAESGCMService cipherAESGCMService;
 
-    /**
-     * Initialise un cipher et retourne la chaîne de caractère décryptée par le cipher
-     * @param text Chaîne de caractères cryptée
-     * @return Chaîne de caractères décryptée
-     */
-    public String decrypt(String text) {
-        try {
-            return cipherAESGCMService.decrypt(text);
-        } catch (Exception e) {
-        	LOGGER.error("\n*** Error from AESUtil cannot decrypt the text {}", e.getMessage());
-            return "Decryption failed: " + e.getMessage();
-        }
+    @InjectMocks
+    private AESUtil aesUtil;
+
+    @BeforeEach
+    public void setUp() {
+        MockitoAnnotations.openMocks(this);
+    }
+
+    @Test
+    void testDecryptSuccessful() throws Exception {
+        // Given a valid encrypted text and corresponding plaintext
+        String encryptedText = "validEncryptedText"; // replace with a valid Base64 encoded string
+        String expectedPlaintext = "decryptedText";
+
+        // Mock the behavior of cipherAESGCMService
+        when(cipherAESGCMService.decrypt(encryptedText)).thenReturn(expectedPlaintext);
+
+        // When decrypt is called
+        String result = aesUtil.decrypt(encryptedText);
+
+        // Then it should return the expected plaintext
+        assertEquals(expectedPlaintext, result);
+        verify(cipherAESGCMService, times(1)).decrypt(encryptedText);
+    }
+
+    @Test
+    void testDecryptWithException() throws Exception {
+        // Given an invalid encrypted text
+        String invalidEncryptedText = "invalidEncryptedText"; // replace with an invalid string
+
+        // Mock the behavior to throw an exception when decrypt is called
+        when(cipherAESGCMService.decrypt(invalidEncryptedText)).thenThrow(new Exception("Decryption error"));
+
+        // When decrypt is called
+        String result = aesUtil.decrypt(invalidEncryptedText);
+
+        // Then it should return an error message
+        assertTrue(result.startsWith("Decryption failed:"));
+        verify(cipherAESGCMService, times(1)).decrypt(invalidEncryptedText);
     }
 }
