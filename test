@@ -1,50 +1,36 @@
 package fr.ca.cats.p1354.s3600.svcdem.service;
 
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.mockito.MockitoAnnotations;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.test.context.SpringBootTest;
+import fr.ca.cats.p0070.s1889.logging.service.Logger;
+import fr.ca.cats.p0070.s1889.logging.service.LoggerService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
 
-import javax.crypto.Cipher;
-import javax.crypto.SecretKey;
+/**
+ * Classe de service de cryptage pour l'algorithme AES.
+ */
+@Service
+public class AESUtil {
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
+	private static final Logger LOGGER = LoggerService.getLogger(AESUtil.class);
+	
+	CipherAESGCMService cipherAESGCMService ;
 
-@SpringBootTest
-class CipherAESGCMServiceTest {
+	@Autowired
+	public AESUtil(CipherAESGCMService cipherAESGCMService) {
+		this.cipherAESGCMService = cipherAESGCMService;
+	}
 
-    private CipherAESGCMService cipherService;
-
-    @BeforeEach
-    public void setUp() throws Exception {
-        MockitoAnnotations.openMocks(this);
-        cipherService = new CipherAESGCMService();
-        // Set the secret key property for the service
-        cipherService.secretkey = "your-32-byte-secret-key-string"; // Ensure it's 32 bytes
-        cipherService.init();
-    }
-
-    @Test
-    void testDecrypt() throws Exception {
-        // Replace with a valid encrypted string
-        String encryptedText = "your_encrypted_base64_string";
-        String expectedPlaintext = "expected decrypted text";
-
-        String decryptedText = cipherService.decrypt(encryptedText);
-
-        assertEquals(expectedPlaintext, decryptedText);
-    }
-
-    @Test
-    void testDecryptWithInvalidInput() {
-        String invalidInput = "invalid-base64";
-
-        Exception exception = assertThrows(Exception.class, () -> {
-            cipherService.decrypt(invalidInput);
-        });
-
-        assertNotNull(exception);
+    /**
+     * Initialise un cipher et retourne la chaîne de caractère décryptée par le cipher
+     * @param text Chaîne de caractères cryptée
+     * @return Chaîne de caractères décryptée
+     */
+    public String decrypt(String text) {
+        try {
+            return cipherAESGCMService.decrypt(text);
+        } catch (Exception e) {
+        	LOGGER.error("\n*** Error from AESUtil cannot decrypt the text {}", e.getMessage());
+            return "Decryption failed: " + e.getMessage();
+        }
     }
 }
