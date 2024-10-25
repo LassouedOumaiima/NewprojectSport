@@ -1,130 +1,142 @@
-package fr.ca.cats.p1354.s3600.svcdem.service;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
-import fr.ca.cats.p0070.s1889.logging.service.Logger;
-import fr.ca.cats.p0070.s1889.logging.service.LoggerService;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Service;
-import jakarta.annotation.PostConstruct;
-import java.nio.charset.StandardCharsets;
-import java.util.Base64;
+import fr.ca.cats.p1354.s3600.svcdem.service.KeyGeneratorUtil;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
 import javax.crypto.Cipher;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.GCMParameterSpec;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 
-/**
- * Classe de Service de gestion des algorithmes de cryptage
- */
-@Service
-public class CipherAESGCMService {
+@ExtendWith(MockitoExtension.class)
+public class CipherAESGCMServiceTest {
 
-	@Value("${secretkey}") 
-	String secretkey ;
+    private CipherAESGCMService cipherAESGCMService;
 
-	private static final Logger LOGGER = LoggerService.getLogger(CipherAESGCMService.class);
-	private static final String ALGORITHM = "AES/GCM/NoPadding";
-    private static final int IV_SIZE  = 12; // 96 bits
-    private static final int TAG_SIZE = 128; // 128 bits
-    private static SecretKey key = null;
-    private static Cipher cipher = null;
-	
-	@PostConstruct
-    public void init() {
-        try {
-        	key = KeyGeneratorUtil.generateKeyFromBytes(this.secretkey.getBytes());
-        	cipher = Cipher.getInstance(ALGORITHM);
-        } catch (Exception e) {
-            LOGGER.error("\n*** Error while initializing CipherAESGCMService {}", e.getMessage());
-        } 
-	}
+    @Mock
+    private SecretKey secretKey;
 
-	/**
-	 * DéCrypte une chaine de caractère en appliquant un algorithme
-	 * @param text Chaîne de caractères cryptée
-	 * @return Chaîne de caractères décryptée
-	 */
-	public String decrypt(String text) throws Exception {
-		byte[] decodedCiphertext = Base64.getDecoder().decode(text);
-		byte[] iv = new byte[IV_SIZE];
+    @BeforeEach
+    void setUp() throws Exception {
+        cipherAESGCMService = new CipherAESGCMService();
+        cipherAESGCMService.init();
+    }
 
-		
-		System.arraycopy(decodedCiphertext, 0, iv, 0, IV_SIZE); // Extraire l'IV
-		byte[] actualCiphertext = new byte[decodedCiphertext.length - IV_SIZE];
-		System.arraycopy(decodedCiphertext, IV_SIZE, actualCiphertext, 0, actualCiphertext.length);
-		
-		GCMParameterSpec gcmParameterSpec = new GCMParameterSpec(TAG_SIZE, iv);
-		cipher.init(Cipher.DECRYPT_MODE, key, gcmParameterSpec);
-		byte[] plaintext = cipher.doFinal(actualCiphertext);
-		
-		return new String(plaintext, StandardCharsets.UTF_8);
+    @Test
+    void testDecrypt_Success() throws Exception {
+        // Arrange
+        String originalText = "Hello, World!";
+        byte[] iv = new byte[12]; // 96 bits
+        byte[] ciphertext = cipherAESGCMService.encrypt(originalText, iv); // Assuming you have an encrypt method for test
 
-	} 
-}
+        String base64Ciphertext = Base64.getEncoder().encodeToString(ciphertext);
 
-package fr.ca.cats.p1354.s3600.svcdem.service;
+        // Act
+        String result = cipherAESGCMService.decrypt(base64Ciphertext);
 
-import fr.ca.cats.p0070.s1889.logging.service.Logger;
-import fr.ca.cats.p0070.s1889.logging.service.LoggerService;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
+        // Assert
+        assertEquals(originalText, result);
+    }
 
-/**
- * Classe de service de cryptage pour l'algorithme AES.
- */
-@Service
-public class AESUtil {
-	
-	private static final Logger LOGGER = LoggerService.getLogger(AESUtil.class);
-	
-	CipherAESGCMService cipherAESGCMService ;
+    @Test
+    void testDecrypt_Failure_InvalidKey() {
+        // Arrange
+        String invalidCiphertext = "invalidCiphertext";
 
-	@Autowired
-	public AESUtil() {
-		this.cipherAESGCMService = cipherAESGCMService;
-	}
+        // Act
+        Exception exception = assertThrows(Exception.class, () -> {
+            cipherAESGCMService.decrypt(invalidCiphertext);
+        });
 
-    /**
-     * Initialise un cipher et retourne la chaîne de caractère décryptée par le cipher
-     * @param text Chaîne de caractères cryptée
-     * @return Chaîne de caractères décryptée
-     */
-    public static String decrypt(String text) {
-        try {
-            CipherAESGCMService cipherAESGCMService = new CipherAESGCMService();
-            return cipherAESGCMService.decrypt(text);
-        } catch (Exception e) {
-        	LOGGER.error("\n*** Error from AESUtil cannot decrypt the text {}", e.getMessage());
-            return "Decryption failed: " + e.getMessage();
-        }
+        // Assert
+        assertTrue(exception.getMessage().contains("Decryption failed"));
     }
 }
-package fr.ca.cats.p1354.s3600.svcdem.service;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+
+import fr.ca.cats.p1354.s3600.svcdem.service.CipherAESGCMService;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+@ExtendWith(MockitoExtension.class)
+public class AESUtilTest {
+
+    @Mock
+    private CipherAESGCMService cipherAESGCMService;
+
+    @InjectMocks
+    private AESUtil aesUtil;
+
+    @Test
+    void testDecrypt_Success() throws Exception {
+        // Arrange
+        String encryptedText = "encryptedText";
+        String decryptedText = "Hello, World!";
+
+        // Mock behavior
+        when(cipherAESGCMService.decrypt(encryptedText)).thenReturn(decryptedText);
+
+        // Act
+        String result = AESUtil.decrypt(encryptedText);
+
+        // Assert
+        assertEquals(decryptedText, result);
+        verify(cipherAESGCMService).decrypt(encryptedText);
+    }
+
+    @Test
+    void testDecrypt_Failure() throws Exception {
+        // Arrange
+        String encryptedText = "encryptedText";
+
+        // Mock behavior to throw an exception
+        when(cipherAESGCMService.decrypt(encryptedText)).thenThrow(new RuntimeException("Decryption error"));
+
+        // Act
+        String result = AESUtil.decrypt(encryptedText);
+
+        // Assert
+        assertTrue(result.startsWith("Decryption failed:"));
+        verify(cipherAESGCMService).decrypt(encryptedText);
+    }
+}
+import static org.junit.jupiter.api.Assertions.*;
 
 import javax.crypto.SecretKey;
-import javax.crypto.spec.SecretKeySpec;
-import org.springframework.stereotype.Service;
+import org.junit.jupiter.api.Test;
 
-/**
- * Classe de service de gestion des clés secrète pour l'algorithme de cryptage
- */
-@Service
-public class KeyGeneratorUtil {
-	
-	private KeyGeneratorUtil() {
+public class KeyGeneratorUtilTest {
 
-	}
+    @Test
+    void testGenerateKeyFromBytes_ValidKey() {
+        // Arrange
+        byte[] validKeyBytes = new byte[32]; // 256 bits
+        SecretKey secretKey = KeyGeneratorUtil.generateKeyFromBytes(validKeyBytes);
 
-    /**
-     * Vérifie que la clé fournit respecte la bonne longueur
-     * @param keyBytes Clé de cryptage
-     * @return Une clé de cryptage au format AES
-     */
-	public static SecretKey generateKeyFromBytes(byte[] keyBytes) {
-        // Ensure the byte array is exactly 32 bytes (256 bits)
-        if (keyBytes.length != 32) {
-            throw new IllegalArgumentException("Key must be 256 bits (32 bytes)");
-        }
-        // Create a SecretKey from the byte array
-        return new SecretKeySpec(keyBytes, "AES");
+        // Assert
+        assertNotNull(secretKey);
     }
-    
+
+    @Test
+    void testGenerateKeyFromBytes_InvalidKey() {
+        // Arrange
+        byte[] invalidKeyBytes = new byte[31]; // 255 bits
+
+        // Act & Assert
+        Exception exception = assertThrows(IllegalArgumentException.class, () -> {
+            KeyGeneratorUtil.generateKeyFromBytes(invalidKeyBytes);
+        });
+
+        assertEquals("Key must be 256 bits (32 bytes)", exception.getMessage());
+    }
 }
