@@ -59,3 +59,72 @@ public class CipherAESGCMService {
 
 	} 
 }
+
+package fr.ca.cats.p1354.s3600.svcdem.service;
+
+import fr.ca.cats.p0070.s1889.logging.service.Logger;
+import fr.ca.cats.p0070.s1889.logging.service.LoggerService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+/**
+ * Classe de service de cryptage pour l'algorithme AES.
+ */
+@Service
+public class AESUtil {
+	
+	private static final Logger LOGGER = LoggerService.getLogger(AESUtil.class);
+	
+	CipherAESGCMService cipherAESGCMService ;
+
+	@Autowired
+	public AESUtil() {
+		this.cipherAESGCMService = cipherAESGCMService;
+	}
+
+    /**
+     * Initialise un cipher et retourne la chaîne de caractère décryptée par le cipher
+     * @param text Chaîne de caractères cryptée
+     * @return Chaîne de caractères décryptée
+     */
+    public static String decrypt(String text) {
+        try {
+            CipherAESGCMService cipherAESGCMService = new CipherAESGCMService();
+            return cipherAESGCMService.decrypt(text);
+        } catch (Exception e) {
+        	LOGGER.error("\n*** Error from AESUtil cannot decrypt the text {}", e.getMessage());
+            return "Decryption failed: " + e.getMessage();
+        }
+    }
+}
+package fr.ca.cats.p1354.s3600.svcdem.service;
+
+import javax.crypto.SecretKey;
+import javax.crypto.spec.SecretKeySpec;
+import org.springframework.stereotype.Service;
+
+/**
+ * Classe de service de gestion des clés secrète pour l'algorithme de cryptage
+ */
+@Service
+public class KeyGeneratorUtil {
+	
+	private KeyGeneratorUtil() {
+
+	}
+
+    /**
+     * Vérifie que la clé fournit respecte la bonne longueur
+     * @param keyBytes Clé de cryptage
+     * @return Une clé de cryptage au format AES
+     */
+	public static SecretKey generateKeyFromBytes(byte[] keyBytes) {
+        // Ensure the byte array is exactly 32 bytes (256 bits)
+        if (keyBytes.length != 32) {
+            throw new IllegalArgumentException("Key must be 256 bits (32 bytes)");
+        }
+        // Create a SecretKey from the byte array
+        return new SecretKeySpec(keyBytes, "AES");
+    }
+    
+}
