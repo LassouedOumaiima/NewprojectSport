@@ -1,57 +1,61 @@
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
+package fr.ca.cats.p1354.s3600.svcdem.service;
 
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
+import fr.ca.cats.p0070.s1889.logging.service.Logger;
+import fr.ca.cats.p0070.s1889.logging.service.LoggerService;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+import jakarta.annotation.PostConstruct;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
+import javax.crypto.Cipher;
+import javax.crypto.SecretKey;
+import javax.crypto.spec.GCMParameterSpec;
 
-@ExtendWith(MockitoExtension.class)
-public class AESUtilTest {
+/**
+ * Classe de Service de gestion des algorithmes de cryptage
+ */
+@Service
+public class CipherAESGCMService {
 
-    @Mock
-    private CipherAESGCMService cipherAESGCMService;
+	@Value("${secretkey}") 
+	String secretkey ;
 
-    @InjectMocks
-    private AESUtil aesUtil; // Injecter le mock dans AESUtil
+	private static final Logger LOGGER = LoggerService.getLogger(CipherAESGCMService.class);
+	private static final String ALGORITHM = "AES/GCM/NoPadding";
+    private static final int IV_SIZE  = 12; // 96 bits
+    private static final int TAG_SIZE = 128; // 128 bits
+    private static SecretKey key = null;
+    private static Cipher cipher = null;
+	
+	@PostConstruct
+    public void init() {
+        try {
+        	key = KeyGeneratorUtil.generateKeyFromBytes(this.secretkey.getBytes());
+        	cipher = Cipher.getInstance(ALGORITHM);
+        } catch (Exception e) {
+            LOGGER.error("\n*** Error while initializing CipherAESGCMService {}", e.getMessage());
+        } 
+	}
 
-    @BeforeEach
-    void setUp() {
-        // Vous pouvez effectuer des initialisations si nécessaire ici
-    }
+	/**
+	 * DéCrypte une chaine de caractère en appliquant un algorithme
+	 * @param text Chaîne de caractères cryptée
+	 * @return Chaîne de caractères décryptée
+	 */
+	public String decrypt(String text) throws Exception {
+		byte[] decodedCiphertext = Base64.getDecoder().decode(text);
+		byte[] iv = new byte[IV_SIZE];
 
-    @Test
-    void testDecrypt_Success() {
-        // Données de test
-        String encryptedText = "encryptedText";
-        String decryptedText = "decryptedText";
+		
+		System.arraycopy(decodedCiphertext, 0, iv, 0, IV_SIZE); // Extraire l'IV
+		byte[] actualCiphertext = new byte[decodedCiphertext.length - IV_SIZE];
+		System.arraycopy(decodedCiphertext, IV_SIZE, actualCiphertext, 0, actualCiphertext.length);
+		
+		GCMParameterSpec gcmParameterSpec = new GCMParameterSpec(TAG_SIZE, iv);
+		cipher.init(Cipher.DECRYPT_MODE, key, gcmParameterSpec);
+		byte[] plaintext = cipher.doFinal(actualCiphertext);
+		
+		return new String(plaintext, StandardCharsets.UTF_8);
 
-        // Configurer le mock
-        when(cipherAESGCMService.decrypt(encryptedText)).thenReturn(decryptedText);
-
-        // Appel de la méthode à tester
-        String result = aesUtil.decrypt(encryptedText);
-
-        // Vérifications
-        assertEquals(decryptedText, result);
-        verify(cipherAESGCMService).decrypt(encryptedText); // Vérifie que le mock a été appelé
-    }
-
-    @Test
-    void testDecrypt_Failure() {
-        // Données de test
-        String encryptedText = "encryptedText";
-
-        // Configurer le mock pour lancer une exception
-        when(cipherAESGCMService.decrypt(encryptedText)).thenThrow(new RuntimeException("Decryption error"));
-
-        // Appel de la méthode à tester
-        String result = aesUtil.decrypt(encryptedText);
-
-        // Vérifications
-        assertTrue(result.startsWith("Decryption failed:")); // Vérifie que le message d'erreur est retourné
-        verify(cipherAESGCMService).decrypt(encryptedText); // Vérifie que le mock a été appelé
-    }
+	} 
 }
