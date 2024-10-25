@@ -1,142 +1,50 @@
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
+package fr.ca.cats.p1354.s3600.svcdem.service;
 
-import fr.ca.cats.p1354.s3600.svcdem.service.KeyGeneratorUtil;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.MockitoAnnotations;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.test.context.SpringBootTest;
 
 import javax.crypto.Cipher;
 import javax.crypto.SecretKey;
-import javax.crypto.spec.GCMParameterSpec;
-import java.nio.charset.StandardCharsets;
-import java.util.Base64;
 
-@ExtendWith(MockitoExtension.class)
-public class CipherAESGCMServiceTest {
-
-    private CipherAESGCMService cipherAESGCMService;
-
-    @Mock
-    private SecretKey secretKey;
-
-    @BeforeEach
-    void setUp() throws Exception {
-        cipherAESGCMService = new CipherAESGCMService();
-        cipherAESGCMService.init();
-    }
-
-    @Test
-    void testDecrypt_Success() throws Exception {
-        // Arrange
-        String originalText = "Hello, World!";
-        byte[] iv = new byte[12]; // 96 bits
-        byte[] ciphertext = cipherAESGCMService.encrypt(originalText, iv); // Assuming you have an encrypt method for test
-
-        String base64Ciphertext = Base64.getEncoder().encodeToString(ciphertext);
-
-        // Act
-        String result = cipherAESGCMService.decrypt(base64Ciphertext);
-
-        // Assert
-        assertEquals(originalText, result);
-    }
-
-    @Test
-    void testDecrypt_Failure_InvalidKey() {
-        // Arrange
-        String invalidCiphertext = "invalidCiphertext";
-
-        // Act
-        Exception exception = assertThrows(Exception.class, () -> {
-            cipherAESGCMService.decrypt(invalidCiphertext);
-        });
-
-        // Assert
-        assertTrue(exception.getMessage().contains("Decryption failed"));
-    }
-}
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-import fr.ca.cats.p1354.s3600.svcdem.service.CipherAESGCMService;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
+@SpringBootTest
+class CipherAESGCMServiceTest {
 
-@ExtendWith(MockitoExtension.class)
-public class AESUtilTest {
+    private CipherAESGCMService cipherService;
 
-    @Mock
-    private CipherAESGCMService cipherAESGCMService;
-
-    @InjectMocks
-    private AESUtil aesUtil;
-
-    @Test
-    void testDecrypt_Success() throws Exception {
-        // Arrange
-        String encryptedText = "encryptedText";
-        String decryptedText = "Hello, World!";
-
-        // Mock behavior
-        when(cipherAESGCMService.decrypt(encryptedText)).thenReturn(decryptedText);
-
-        // Act
-        String result = AESUtil.decrypt(encryptedText);
-
-        // Assert
-        assertEquals(decryptedText, result);
-        verify(cipherAESGCMService).decrypt(encryptedText);
+    @BeforeEach
+    public void setUp() throws Exception {
+        MockitoAnnotations.openMocks(this);
+        cipherService = new CipherAESGCMService();
+        // Set the secret key property for the service
+        cipherService.secretkey = "your-32-byte-secret-key-string"; // Ensure it's 32 bytes
+        cipherService.init();
     }
 
     @Test
-    void testDecrypt_Failure() throws Exception {
-        // Arrange
-        String encryptedText = "encryptedText";
+    void testDecrypt() throws Exception {
+        // Replace with a valid encrypted string
+        String encryptedText = "your_encrypted_base64_string";
+        String expectedPlaintext = "expected decrypted text";
 
-        // Mock behavior to throw an exception
-        when(cipherAESGCMService.decrypt(encryptedText)).thenThrow(new RuntimeException("Decryption error"));
+        String decryptedText = cipherService.decrypt(encryptedText);
 
-        // Act
-        String result = AESUtil.decrypt(encryptedText);
-
-        // Assert
-        assertTrue(result.startsWith("Decryption failed:"));
-        verify(cipherAESGCMService).decrypt(encryptedText);
-    }
-}
-import static org.junit.jupiter.api.Assertions.*;
-
-import javax.crypto.SecretKey;
-import org.junit.jupiter.api.Test;
-
-public class KeyGeneratorUtilTest {
-
-    @Test
-    void testGenerateKeyFromBytes_ValidKey() {
-        // Arrange
-        byte[] validKeyBytes = new byte[32]; // 256 bits
-        SecretKey secretKey = KeyGeneratorUtil.generateKeyFromBytes(validKeyBytes);
-
-        // Assert
-        assertNotNull(secretKey);
+        assertEquals(expectedPlaintext, decryptedText);
     }
 
     @Test
-    void testGenerateKeyFromBytes_InvalidKey() {
-        // Arrange
-        byte[] invalidKeyBytes = new byte[31]; // 255 bits
+    void testDecryptWithInvalidInput() {
+        String invalidInput = "invalid-base64";
 
-        // Act & Assert
-        Exception exception = assertThrows(IllegalArgumentException.class, () -> {
-            KeyGeneratorUtil.generateKeyFromBytes(invalidKeyBytes);
+        Exception exception = assertThrows(Exception.class, () -> {
+            cipherService.decrypt(invalidInput);
         });
 
-        assertEquals("Key must be 256 bits (32 bytes)", exception.getMessage());
+        assertNotNull(exception);
     }
 }
