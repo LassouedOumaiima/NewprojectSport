@@ -1,9 +1,57 @@
-public static String decrypt(String text) {
-        try {
-            CipherAESGCMService cipherAESGCMService = new CipherAESGCMService();
-            return cipherAESGCMService.decrypt(text);
-        } catch (Exception e) {
-        	LOGGER.error("\n*** Error from AESUtil cannot decrypt the text {}", e.getMessage());
-            return "Decryption failed: " + e.getMessage();
-        }
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+@ExtendWith(MockitoExtension.class)
+public class AESUtilTest {
+
+    @Mock
+    private CipherAESGCMService cipherAESGCMService;
+
+    @InjectMocks
+    private AESUtil aesUtil; // Injecter le mock dans AESUtil
+
+    @BeforeEach
+    void setUp() {
+        // Vous pouvez effectuer des initialisations si nécessaire ici
     }
+
+    @Test
+    void testDecrypt_Success() {
+        // Données de test
+        String encryptedText = "encryptedText";
+        String decryptedText = "decryptedText";
+
+        // Configurer le mock
+        when(cipherAESGCMService.decrypt(encryptedText)).thenReturn(decryptedText);
+
+        // Appel de la méthode à tester
+        String result = aesUtil.decrypt(encryptedText);
+
+        // Vérifications
+        assertEquals(decryptedText, result);
+        verify(cipherAESGCMService).decrypt(encryptedText); // Vérifie que le mock a été appelé
+    }
+
+    @Test
+    void testDecrypt_Failure() {
+        // Données de test
+        String encryptedText = "encryptedText";
+
+        // Configurer le mock pour lancer une exception
+        when(cipherAESGCMService.decrypt(encryptedText)).thenThrow(new RuntimeException("Decryption error"));
+
+        // Appel de la méthode à tester
+        String result = aesUtil.decrypt(encryptedText);
+
+        // Vérifications
+        assertTrue(result.startsWith("Decryption failed:")); // Vérifie que le message d'erreur est retourné
+        verify(cipherAESGCMService).decrypt(encryptedText); // Vérifie que le mock a été appelé
+    }
+}
