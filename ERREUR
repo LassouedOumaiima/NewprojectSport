@@ -1,2 +1,1 @@
-Apres une vfication avec 
-, on a remarque que le nombre des cpu est dimenue aprés la mep, est les nombre de requetes par seconde reçues par la pod ressdict est revient de l'actuator, du coup y pas d'alerte à remonte 
+Après vérification, nous avons remarqué que le nombre de CPU a diminué après la mise en production. De plus, le nombre de requêtes par seconde reçues par le pod Redis, provenant de l'Actuator, n'a pas entraîné d'alerte à remonter.
