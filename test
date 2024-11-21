@@ -1,70 +1,20 @@
-package fr.ca.cats.p1354.s3600.svcdem.service;
-
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
-
-import javax.crypto.SecretKey;
-import javax.crypto.Cipher;
-
-import java.util.Base64;
-
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
-
-class CipherAESGCMServiceTest {
-
-    @Mock
-    private KeyGeneratorUtil keyGeneratorUtil;
-
-    @Mock
-    private SecretKey mockSecretKey;
-
-    @InjectMocks
-    private CipherAESGCMService cipherAESGCMService;
-
-    @BeforeEach
-    public void setUp() throws Exception {
-        MockitoAnnotations.openMocks(this);
-        // Set up the secret key
-        when(keyGeneratorUtil.generateKeyFromBytes(any(byte[].class))).thenReturn(mockSecretKey);
-        
-        // Mock Cipher instance
-        cipherAESGCMService.init(); // Call init to initialize cipher
-    }
-
-    @Test
-    void testDecryptSuccessful() throws Exception {
-        // Given a valid base64 encoded encrypted string
-        String encryptedText = "your_base64_encoded_encrypted_string"; // Replace with a valid string
-        String expectedPlaintext = "decryptedText"; // Replace with the expected plaintext
-        
-        // Mock the cipher behavior
-        Cipher mockCipher = mock(Cipher.class);
-        when(mockCipher.doFinal(any(byte[].class))).thenReturn(expectedPlaintext.getBytes(StandardCharsets.UTF_8));
-        cipherAESGCMService.cipher = mockCipher;
-
-        // When decrypt is called
-        String result = cipherAESGCMService.decrypt(encryptedText);
-
-        // Then it should return the expected plaintext
-        assertEquals(expectedPlaintext, result);
-        verify(mockCipher, times(1)).doFinal(any(byte[].class));
-    }
-
-    @Test
-    void testDecryptWithException() {
-        // Given an invalid base64 encoded encrypted string
-        String invalidEncryptedText = "invalid_base64"; // Replace with an invalid string
-        
-        // When decrypt is called, it should throw an exception
-        Exception exception = assertThrows(Exception.class, () -> {
-            cipherAESGCMService.decrypt(invalidEncryptedText);
-        });
-
-        // Then an exception should be thrown
-        assertNotNull(exception);
-    }
-}
+	public Prediction getPrediction(@RequestBody String mail, @RequestBody String mail_id) {
+		HttpHeaders headers = new HttpHeaders();
+		headers.setContentType(MediaType.TEXT_PLAIN);
+		HttpEntity<String> entity = new HttpEntity<>(mail,headers);
+		Prediction prediction = null;
+		try {
+			Instant startEvent = Instant.now();
+			ResponseEntity<String> response = restTemplate.postForEntity(urlsPrediction, entity, String.class, String.class);
+			prediction = objectMapper.readValue(response.getBody(), Prediction.class);
+			LOGGER.info("\n*** evt=get prediction request|evt_status=success \n");
+			Instant endEvent = Instant.now();
+			Duration duration= Duration.between(startEvent, endEvent);
+			LOGGER.debug("\n-->Duration getPrediction()= "+ duration.getSeconds()+"sec "+duration.toMillis()+"ms\n");
+			LOGGER.info("\n*** Success in retrieving categories from ress-prediction API \n");
+		} catch(Exception ex) {
+            LOGGER.error("\n*** Error while getting categories from ress-prediction API " +ex.getMessage());
+			LOGGER.info("\n*** evt=get prediction request|evt_status=failed|exception=" + ex.getMessage() + "\n");
+		}
+		return prediction;
+	}
