@@ -1,1 +1,8 @@
-	
+public Prediction getPrediction(@RequestBody MailRequest mailRequest) {
+		Instant startEvent = Instant.now();
+		Prediction prediction = svcdemService.getPrediction(mailRequest);
+		Instant endEvent = Instant.now();
+		Duration duration= Duration.between(startEvent, endEvent);
+		LOGGER.info("\n-->Duration getPrediction()= "+ duration.getSeconds()+"sec "+duration.toMillis()+"ms\n");
+		return prediction;
+	}	
