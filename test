@@ -12,6 +12,7 @@ import fr.ca.cats.p1354.s3600.svcdem.service.SvcdemService;
 import lombok.Setter;
 import org.apache.kafka.clients.consumer.*;
 import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.common.errors.WakeupException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
@@ -102,6 +103,7 @@ public class ConsumerServiceImpl implements ConsumerService {
         LOGGER.info("\n*** Inside restart: " +consumerKafka);
         try {
             if(!isConsumerClosed.get()){
+                wakeup();
                 LOGGER.info("\n*** Closing Consumer");
                 closeConsumer();
                 consumerPoll();
@@ -110,7 +112,8 @@ public class ConsumerServiceImpl implements ConsumerService {
             }
         } catch (Exception e) {
             LOGGER.error("\n*** Failed to close consumer: " + consumerKafka + e.getMessage() + "\n");
-            Thread.interrupted();
+           // Thread.interrupted();
+            wakeup();
         }
     }
 
@@ -127,6 +130,18 @@ public class ConsumerServiceImpl implements ConsumerService {
         }
     }
 
+    public void wakeup(){
+       try {
+           if (!isConsumerClosed.get()) {
+                consumerKafka.wakeup();
+                LOGGER.info("\n*** Success wakeup");
+           } else {
+            LOGGER.info("\n*** Consumer was closed before wakeup");
+           }
+       } catch (WakeupException e) {
+            LOGGER.error("\n*** Failed to wakeup: " + consumerKafka + e.getMessage() + "\n");
+       }
+    }
     /**
      * Cette méthode réalise une action de poll sur le topic Kafka contenant les demande de qualifications.
      * L'action de poll se traduit par un sondage du topic.
@@ -140,10 +155,10 @@ public class ConsumerServiceImpl implements ConsumerService {
         try {
             while (true) {
                 try{
-                    if(isConsumerClosed.get()) {
-                        LOGGER.info("\n*** Consumer is closed, exiting");
-                        break;
-                    }
+//                    if(isConsumerClosed.get()) {
+//                        LOGGER.info("\n*** Consumer is closed, exiting");
+//                        break;
+//                    }
                     ConsumerRecords<DemandeQualificationKey, DemandeQualificationValue> records = consumerKafka.poll(Duration.ofMillis((Integer.parseInt(pollDuration))));
                     for (ConsumerRecord<DemandeQualificationKey, DemandeQualificationValue> record : records) {
                         DemandeQualificationValue qualificationValue = record.value() ;
@@ -164,15 +179,12 @@ public class ConsumerServiceImpl implements ConsumerService {
                         LOGGER.warn("\n*** Warning nbRestart is above 5"+ "\n");
                     }
 
-                } catch(Exception exception){
-                    if(exception.getMessage().contains("*** Consumer is closed")){
-                        LOGGER.error("\n*** Error attempting to use a closed consumer, stopping");
-                    } else {
-                        LOGGER.error("\n*** Error while polling from topic "+exception.getMessage() + "\n");
-                    }
-                    break;
+                } catch(WakeupException ex){
+                    LOGGER.error("\n*** WakeupException "+ ex.getMessage() + "\n");
+                    //break;
+                    restartConsumer();
                 }
-            }/**End of while loop*/
+                }/**End of while loop*/
         } finally {
             closeConsumer();
         }
