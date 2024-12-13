@@ -104,7 +104,6 @@ public class ConsumerServiceImpl implements ConsumerService {
         try {
             if(!isConsumerClosed.get()){
                 wakeup();
-                LOGGER.info("\n*** Closing Consumer");
                 closeConsumer();
                 consumerPoll();
             } else {
@@ -112,14 +111,14 @@ public class ConsumerServiceImpl implements ConsumerService {
             }
         } catch (Exception e) {
             LOGGER.error("\n*** Failed to close consumer: " + consumerKafka + e.getMessage() + "\n");
-           // Thread.interrupted();
-            wakeup();
+            Thread.interrupted();
         }
     }
 
     public void closeConsumer() {
         if(isConsumerClosed.compareAndSet(false,true)) {
             try{
+                LOGGER.info("\n*** Closing Consumer");
                 consumerKafka.close();
                 LOGGER.info("\n*** Consumer closed successfully" + "\n");
             } catch(Exception exception) {
@@ -149,16 +148,13 @@ public class ConsumerServiceImpl implements ConsumerService {
      */
     @Async("taskExecutor")
     public void consumerPoll() {
-        LOGGER.info("\n*** consumerPoll  \n");
+        LOGGER.info("\n*** consumer" +
+                "Poll  \n");
         dictionary = svcdemService.getDictionary();
         subscribeConsumer(consumerKafka);
         try {
-            while (true) {
+            while (!isConsumerClosed.get()) {
                 try{
-//                    if(isConsumerClosed.get()) {
-//                        LOGGER.info("\n*** Consumer is closed, exiting");
-//                        break;
-//                    }
                     ConsumerRecords<DemandeQualificationKey, DemandeQualificationValue> records = consumerKafka.poll(Duration.ofMillis((Integer.parseInt(pollDuration))));
                     for (ConsumerRecord<DemandeQualificationKey, DemandeQualificationValue> record : records) {
                         DemandeQualificationValue qualificationValue = record.value() ;
@@ -180,11 +176,12 @@ public class ConsumerServiceImpl implements ConsumerService {
                     }
 
                 } catch(WakeupException ex){
-                    LOGGER.error("\n*** WakeupException "+ ex.getMessage() + "\n");
-                    //break;
-                    restartConsumer();
+                    LOGGER.error("\n*** Kafka Consumer wakeup exception "+ ex.getMessage() + "\n");
+                } catch(Exception ex){
+                    LOGGER.error("\n*** Error while polling from topic "+ ex.getMessage() + "\n");
+                    break;
                 }
-                }/**End of while loop*/
+            }/**End of while loop*/
         } finally {
             closeConsumer();
         }
