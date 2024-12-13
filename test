@@ -13,10 +13,12 @@ import lombok.Setter;
 import org.apache.kafka.clients.consumer.*;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.errors.WakeupException;
+import org.apache.kafka.common.errors.CommitFailedException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Collection;
@@ -28,37 +30,37 @@ public class ConsumerServiceImpl implements ConsumerService {
 
     private static final Logger LOGGER = LoggerService.getLogger(ConsumerServiceImpl.class);
 
-    static int nbRestart = 0 ;
+    static int nbRestart = 0;
     @Value("${topic}")
-    String topic ;
+    String topic;
 
     @Value("${pollDuration}")
-    String pollDuration ;
+    String pollDuration;
 
     ConsumerConfig consumerConfig;
 
-    ProducerService producerService ;
+    ProducerService producerService;
 
     SvcdemService svcdemService;
 
     static Consumer<DemandeQualificationKey, DemandeQualificationValue> consumerKafka;
 
-    static DictionaryPrediction dictionary ;
+    static DictionaryPrediction dictionary;
 
     @Setter
-    static AtomicBoolean isConsumerClosed =  new AtomicBoolean(false);
+    static AtomicBoolean isConsumerClosed = new AtomicBoolean(false);
 
     @Autowired
     public ConsumerServiceImpl(SvcdemService svcdemService, ProducerService producerService, ConsumerConfig consumerConfig) {
         this.svcdemService = svcdemService;
-        this.producerService = producerService ;
-        this.consumerConfig = consumerConfig ;
-        this.consumerKafka =  consumerConfig.consumerKafka();
+        this.producerService = producerService;
+        this.consumerConfig = consumerConfig;
+        this.consumerKafka = consumerConfig.consumerKafka();
     }
 
     public void subscribeConsumer(Consumer<DemandeQualificationKey, DemandeQualificationValue> consumerKafka) {
         this.consumerKafka = consumerKafka;
-        if(isConsumerClosed.get()){
+        if (isConsumerClosed.get()) {
             isConsumerClosed.set(false);
         }
         consumerKafka.subscribe(Collections.singletonList(topic), new ConsumerRebalanceListener() {
@@ -74,9 +76,11 @@ public class ConsumerServiceImpl implements ConsumerService {
                     }
                 } catch (CommitFailedException e) {
                     restartConsumer();
-                    nbRestart = nbRestart+ 1 ;
+                    nbRestart = nbRestart + 1;
                     LOGGER.info("\n*** onPartitionsRevoked restarting consumer nbRestart :" + nbRestart);
-                    LOGGER.error("\n*** Error from consumer while commiting, restarting consumer");
+                    LOGGER.error("\n*** Error from consumer while committing, restarting consumer", e);
+                } catch (Exception e) {
+                    LOGGER.error("\n*** Unexpected error during partitions revoked", e);
                 }
             }
 
@@ -84,25 +88,25 @@ public class ConsumerServiceImpl implements ConsumerService {
             public void onPartitionsAssigned(Collection<TopicPartition> partitions) {
                 try {
                     if (!isConsumerClosed.get()) {
-                        for(TopicPartition topicPartition : partitions){
-                            long offset =  consumerKafka.committed(topicPartition).offset();
+                        for (TopicPartition topicPartition : partitions) {
+                            long offset = consumerKafka.committed(topicPartition).offset();
                             consumerKafka.seek(topicPartition, offset);
                         }
-                        LOGGER.info("\n*** Partitions (re)assigned: \n"+partitions.toString());
+                        LOGGER.info("\n*** Partitions (re)assigned: \n" + partitions.toString());
                     } else {
                         LOGGER.debug("\n*** Consumer was closed before committing");
                     }
                 } catch (Exception e) {
-                    LOGGER.error("\n***  Error while Partitions assigned");
+                    LOGGER.error("\n*** Error while Partitions assigned", e);
                 }
             }
         });
     }
 
     public void restartConsumer() {
-        LOGGER.info("\n*** Inside restart: " +consumerKafka);
+        LOGGER.info("\n*** Inside restart: " + consumerKafka);
         try {
-            if(!isConsumerClosed.get()){
+            if (!isConsumerClosed.get()) {
                 wakeup();
                 closeConsumer();
                 consumerPoll();
@@ -110,82 +114,76 @@ public class ConsumerServiceImpl implements ConsumerService {
                 LOGGER.info("\n*** Consumer is already closed");
             }
         } catch (Exception e) {
-            LOGGER.error("\n*** Failed to close consumer: " + consumerKafka + e.getMessage() + "\n");
+            LOGGER.error("\n*** Failed to restart consumer: " + consumerKafka, e);
             Thread.interrupted();
         }
     }
 
     public void closeConsumer() {
-        if(isConsumerClosed.compareAndSet(false,true)) {
-            try{
+        if (isConsumerClosed.compareAndSet(false, true)) {
+            try {
                 LOGGER.info("\n*** Closing Consumer");
                 consumerKafka.close();
-                LOGGER.info("\n*** Consumer closed successfully" + "\n");
-            } catch(Exception exception) {
-                LOGGER.error("\n*** Error while closing consumer: " + exception.getMessage() + "\n");
+                LOGGER.info("\n*** Consumer closed successfully\n");
+            } catch (Exception exception) {
+                LOGGER.error("\n*** Error while closing consumer: " + exception.getMessage(), exception);
             }
         } else {
             LOGGER.info("\n*** Consumer was already closed");
         }
     }
 
-    public void wakeup(){
-       try {
-           if (!isConsumerClosed.get()) {
+    public void wakeup() {
+        try {
+            if (!isConsumerClosed.get()) {
                 consumerKafka.wakeup();
                 LOGGER.info("\n*** Success wakeup");
-           } else {
-            LOGGER.info("\n*** Consumer was closed before wakeup");
-           }
-       } catch (WakeupException e) {
-            LOGGER.error("\n*** Failed to wakeup: " + consumerKafka + e.getMessage() + "\n");
-       }
+            } else {
+                LOGGER.info("\n*** Consumer was closed before wakeup");
+            }
+        } catch (WakeupException e) {
+            LOGGER.error("\n*** Failed to wakeup: " + consumerKafka, e);
+        } catch (Exception e) {
+            LOGGER.error("\n*** Unexpected error during wakeup", e);
+        }
     }
-    /**
-     * Cette méthode réalise une action de poll sur le topic Kafka contenant les demande de qualifications.
-     * L'action de poll se traduit par un sondage du topic.
-     * Le consumer interroge le topic afin de savoir s'il a des messages à consommer.
-     */
+
     @Async("taskExecutor")
     public void consumerPoll() {
-        LOGGER.info("\n*** consumer" +
-                "Poll  \n");
+        LOGGER.info("\n*** consumerPoll started");
         dictionary = svcdemService.getDictionary();
         subscribeConsumer(consumerKafka);
         try {
             while (!isConsumerClosed.get()) {
-                try{
-                    ConsumerRecords<DemandeQualificationKey, DemandeQualificationValue> records = consumerKafka.poll(Duration.ofMillis((Integer.parseInt(pollDuration))));
+                try {
+                    ConsumerRecords<DemandeQualificationKey, DemandeQualificationValue> records = consumerKafka.poll(Duration.ofMillis(Integer.parseInt(pollDuration)));
                     for (ConsumerRecord<DemandeQualificationKey, DemandeQualificationValue> record : records) {
-                        DemandeQualificationValue qualificationValue = record.value() ;
-                        LOGGER.info("\n*** evt=consumer kafka message|mail_id=" + qualificationValue.getMailId() + "|evt_status=success \n" );
+                        DemandeQualificationValue qualificationValue = record.value();
+                        LOGGER.info("\n*** evt=consumer kafka message|mail_id=" + qualificationValue.getMailId() + "|evt_status=success\n");
                         Instant startEvent = Instant.now();
                         svcdemService.processDemandeQualificationData(qualificationValue, dictionary);
                         Instant endEvent = Instant.now();
-                        Duration duration= Duration.between(startEvent, endEvent);
-                        LOGGER.info("\n-->Duration record= "+ duration.getSeconds()+"sec "+duration.toMillis()+"ms\n");
+                        Duration duration = Duration.between(startEvent, endEvent);
+                        LOGGER.info("\n-->Duration record= " + duration.getSeconds() + "sec " + duration.toMillis() + "ms\n");
                     }
                     consumerKafka.commitSync();
-                } catch(CommitFailedException exp) {
-                    LOGGER.error("\n*** Error from consumer while commiting "+ exp.getMessage() + "\n");
+                } catch (CommitFailedException exp) {
+                    LOGGER.error("\n*** Error from consumer while committing", exp);
                     restartConsumer();
-                    nbRestart = nbRestart+ 1 ;
+                    nbRestart = nbRestart + 1;
                     LOGGER.info("\n*** restarting consumer nbRestart :" + nbRestart);
-                    if(nbRestart > 5){
-                        LOGGER.warn("\n*** Warning nbRestart is above 5"+ "\n");
+                    if (nbRestart > 5) {
+                        LOGGER.warn("\n*** Warning nbRestart is above 5\n");
                     }
-
-                } catch(WakeupException ex){
-                    LOGGER.error("\n*** Kafka Consumer wakeup exception "+ ex.getMessage() + "\n");
-                } catch(Exception ex){
-                    LOGGER.error("\n*** Error while polling from topic "+ ex.getMessage() + "\n");
+                } catch (WakeupException ex) {
+                    LOGGER.error("\n*** Kafka Consumer wakeup exception", ex);
+                } catch (Exception ex) {
+                    LOGGER.error("\n*** Error while polling from topic", ex);
                     break;
                 }
-            }/**End of while loop*/
+            } /** End of while loop */
         } finally {
             closeConsumer();
         }
     }
-
-
 }
