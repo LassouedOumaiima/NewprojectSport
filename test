@@ -1,151 +1,21 @@
-Voici la version de votre code avec des commentaires ajoutés pour expliquer le rôle de chaque méthode et de l'appel à `wakeup()`. Je vais aussi ajouter un exemple de test unitaire pour la méthode `wakeup()`.
-
-### **Code avec commentaires :**
-
-```java
-public void restartConsumer() {
-    LOGGER.info("\n*** Inside restart: " + consumerKafka);
-
-    try {
-        // Vérifie si le consommateur est encore actif avant de tenter un redémarrage
-        if (!isConsumerClosed.get()) {
-            // Appelle wakeup() pour interrompre toute opération en cours, si le consommateur est actif
-            wakeup();
-            
-            // Ferme proprement le consommateur
-            closeConsumer();
-            
-            // Lance un nouveau cycle de consommation (poll)
-            consumerPoll();
-        } else {
-            LOGGER.info("\n*** Consumer is already closed");
-        }
-    } catch (Exception e) {
-        // Capture toutes les exceptions imprévues et les logue
-        LOGGER.error("\n*** Failed to restart consumer: " + consumerKafka, e);
-        Thread.interrupted();  // Interrompt le thread courant si une exception se produit
-    }
-}
-
-/**
- * Cette méthode appelle la méthode wakeup() sur le consommateur pour l'interrompre proprement.
- * Elle est utilisée principalement pour sortir d'un état bloqué de consommation avant de fermer ou redémarrer le consommateur.
- */
-public void wakeup() {
-    try {
-        // Vérifie si le consommateur est fermé avant de tenter de l'interrompre
-        if (!isConsumerClosed.get()) {
-            // Appelle wakeup() pour interrompre toute opération bloquante en cours sur le consommateur
-            consumerKafka.wakeup();
-            LOGGER.info("\n*** Success wakeup");
-        } else {
-            LOGGER.info("\n*** Consumer was closed before wakeup");
-        }
-    } catch (WakeupException e) {
-        // Cette exception est attendue lorsqu'un wakeup est effectué, nous la loguons pour indiquer une interruption normale
-        LOGGER.error("\n*** Failed to wakeup: " + consumerKafka, e);
-    } catch (Exception e) {
-        // Capture toutes les autres exceptions non anticipées
-        LOGGER.error("\n*** Unexpected error during wakeup", e);
-    }
-}
-```
-
-### **Test unitaire pour la méthode `wakeup()` :**
-
-Le test unitaire suivant utilise **JUnit** et **Mockito** pour simuler le comportement du consommateur Kafka et tester le bon fonctionnement de la méthode `wakeup()`. 
-
-**Dépendances nécessaires dans `pom.xml` :**
-- JUnit : pour les tests unitaires.
-- Mockito : pour simuler le comportement du consommateur Kafka.
-
-Voici un exemple de test unitaire pour la méthode `wakeup()` :
-
-```java
-import static org.mockito.Mockito.*;
-import static org.junit.Assert.*;
-
-import org.apache.kafka.clients.consumer.Consumer;
-import org.apache.kafka.common.errors.WakeupException;
-import org.junit.Before;
-import org.junit.Test;
-
-public class ConsumerServiceImplTest {
-
-    private ConsumerServiceImpl consumerService;
-    private Consumer<DemandeQualificationKey, DemandeQualificationValue> mockConsumer;
-
-    @Before
-    public void setUp() {
-        // Création du mock du consommateur Kafka
-        mockConsumer = mock(Consumer.class);
-        consumerService = new ConsumerServiceImpl(null, null, null); // Passer null pour les services non utilisés ici
-
-        // Injection du mock dans la classe de service
-        consumerService.consumerKafka = mockConsumer;
-    }
-
-    @Test
-    public void testWakeupConsumerNotClosed() {
-        // Simuler que le consommateur n'est pas fermé
-        when(consumerService.isConsumerClosed.get()).thenReturn(false);
-
-        // Appel de la méthode wakeup()
-        consumerService.wakeup();
-
-        // Vérification si la méthode wakeup() sur le consommateur a été appelée
-        verify(mockConsumer, times(1)).wakeup();
-    }
-
-    @Test
-    public void testWakeupConsumerAlreadyClosed() {
-        // Simuler que le consommateur est déjà fermé
-        when(consumerService.isConsumerClosed.get()).thenReturn(true);
-
-        // Appel de la méthode wakeup()
-        consumerService.wakeup();
-
-        // Vérification si la méthode wakeup() n'a pas été appelée
-        verify(mockConsumer, times(0)).wakeup();
-    }
-
-    @Test
-    public void testWakeupException() {
-        // Simuler un comportement où wakeup() lève une WakeupException
-        doThrow(new WakeupException("Forced WakeupException")).when(mockConsumer).wakeup();
-
-        // Appel de la méthode wakeup() et vérifier qu'aucune exception ne fait échouer le test
-        try {
-            consumerService.wakeup();
-        } catch (Exception e) {
-            fail("Exception should not be thrown here");
-        }
-    }
-
-    @Test
-    public void testWakeupUnexpectedException() {
-        // Simuler une exception imprévue lors de l'appel de wakeup()
-        doThrow(new RuntimeException("Unexpected exception")).when(mockConsumer).wakeup();
-
-        // Appel de la méthode wakeup() et vérifier qu'une exception imprévue est capturée
-        try {
-            consumerService.wakeup();
-            fail("Exception should have been thrown");
-        } catch (RuntimeException e) {
-            assertEquals("Unexpected exception", e.getMessage());
-        }
-    }
-}
-```
-
-### **Explication du test unitaire :**
-1. **`testWakeupConsumerNotClosed()`** : Vérifie que lorsque le consommateur n'est pas fermé, la méthode `wakeup()` est appelée correctement.
-2. **`testWakeupConsumerAlreadyClosed()`** : Vérifie que si le consommateur est déjà fermé, la méthode `wakeup()` ne fait rien (la méthode `wakeup()` ne doit pas être appelée).
-3. **`testWakeupException()`** : Simule une situation où la méthode `wakeup()` lève une `WakeupException` et s'assure que cette exception est gérée correctement sans faire échouer le test.
-4. **`testWakeupUnexpectedException()`** : Simule une exception imprévue (autre que `WakeupException`) et vérifie que l'exception est capturée et loguée correctement.
-
-### **Résumé :**
-- **Commentaires** ont été ajoutés dans le code pour expliquer la logique de l'appel à `wakeup()`.
-- **Tests unitaires** ont été fournis pour tester la méthode `wakeup()`, en vérifiant plusieurs scénarios, y compris l'état du consommateur et les exceptions levées.
-
-Ce test unitaire vous permet de simuler le comportement du consommateur Kafka et de vérifier que la méthode `wakeup()` fonctionne correctement dans différents cas d'utilisation.
+@Test
+	void testGetPrediction() throws Exception {
+		String mail = "Bonjour, Prise de rdv, je souhaite un rdv pour le 26/01 pour le changement de plafond de ma CB" ;
+		MailRequest mailRequest = new MailRequest("123", mail );
+		MockHttpServletResponse response = mockMvc.perform(MockMvcRequestBuilders.post("/getPrediction")
+									    		  .contentType(MediaType.APPLICATION_JSON)
+									    		  .content(String.valueOf(mailRequest)))
+									    		  .andReturn().getResponse();
+		if(response.getStatus() == HttpStatus.OK.value()){
+			Category cat1 = new Category("CARTE-BANCAIRE_CHANGEMENT-PLAFOND", 0.8711363077163696) ;
+			Category cat2 = new Category("RDV_CONFIRMATION-CALAGE", 0.7130698561668396) ;
+			Category cat3 = new Category("RDV_PRISE-DE-RDV", 0.6180949807167053) ;
+			List<Category> categoryTests = new ArrayList<>();
+			categoryTests.add(cat1);
+			categoryTests.add(cat2);
+			categoryTests.add(cat3);
+			Prediction predictionTest = new Prediction(categoryTests);
+			Prediction prediction  = objectMapper.readValue(response.getContentAsString(), Prediction.class);
+			assertThat(prediction.equals(predictionTest));
+		}
+	}
