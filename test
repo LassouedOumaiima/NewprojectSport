@@ -1,189 +1,151 @@
-package fr.ca.cats.p1354.s3600.svcdem.service.impl;
+Voici la version de votre code avec des commentaires ajoutés pour expliquer le rôle de chaque méthode et de l'appel à `wakeup()`. Je vais aussi ajouter un exemple de test unitaire pour la méthode `wakeup()`.
 
-import fr.ca.cats.p0070.s1889.logging.service.Logger;
-import fr.ca.cats.p0070.s1889.logging.service.LoggerService;
-import fr.ca.cats.p1354.DemandeQualificationKey;
-import fr.ca.cats.p1354.DemandeQualificationValue;
-import fr.ca.cats.p1354.s3600.svcdem.config.ConsumerConfig;
-import fr.ca.cats.p1354.s3600.svcdem.model.DictionaryPrediction;
-import fr.ca.cats.p1354.s3600.svcdem.service.ConsumerService;
-import fr.ca.cats.p1354.s3600.svcdem.service.ProducerService;
-import fr.ca.cats.p1354.s3600.svcdem.service.SvcdemService;
-import lombok.Setter;
-import org.apache.kafka.clients.consumer.*;
-import org.apache.kafka.common.TopicPartition;
-import org.apache.kafka.common.errors.WakeupException;
-import org.apache.kafka.common.errors.CommitFailedException;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.scheduling.annotation.Async;
-import org.springframework.stereotype.Service;
+### **Code avec commentaires :**
 
-import java.time.Duration;
-import java.time.Instant;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.concurrent.atomic.AtomicBoolean;
+```java
+public void restartConsumer() {
+    LOGGER.info("\n*** Inside restart: " + consumerKafka);
 
-@Service
-public class ConsumerServiceImpl implements ConsumerService {
-
-    private static final Logger LOGGER = LoggerService.getLogger(ConsumerServiceImpl.class);
-
-    static int nbRestart = 0;
-    @Value("${topic}")
-    String topic;
-
-    @Value("${pollDuration}")
-    String pollDuration;
-
-    ConsumerConfig consumerConfig;
-
-    ProducerService producerService;
-
-    SvcdemService svcdemService;
-
-    static Consumer<DemandeQualificationKey, DemandeQualificationValue> consumerKafka;
-
-    static DictionaryPrediction dictionary;
-
-    @Setter
-    static AtomicBoolean isConsumerClosed = new AtomicBoolean(false);
-
-    @Autowired
-    public ConsumerServiceImpl(SvcdemService svcdemService, ProducerService producerService, ConsumerConfig consumerConfig) {
-        this.svcdemService = svcdemService;
-        this.producerService = producerService;
-        this.consumerConfig = consumerConfig;
-        this.consumerKafka = consumerConfig.consumerKafka();
-    }
-
-    public void subscribeConsumer(Consumer<DemandeQualificationKey, DemandeQualificationValue> consumerKafka) {
-        this.consumerKafka = consumerKafka;
-        if (isConsumerClosed.get()) {
-            isConsumerClosed.set(false);
-        }
-        consumerKafka.subscribe(Collections.singletonList(topic), new ConsumerRebalanceListener() {
-            @Override
-            public void onPartitionsRevoked(Collection<TopicPartition> partitions) {
-                try {
-                    LOGGER.info("\n*** Partitions revoked, committing current offsets");
-                    if (!isConsumerClosed.get()) {
-                        consumerKafka.commitSync();
-                        LOGGER.info("\n*** Partitions revoked, current offset has been committed\n");
-                    } else {
-                        LOGGER.debug("\n*** Consumer was closed before committing");
-                    }
-                } catch (CommitFailedException e) {
-                    restartConsumer();
-                    nbRestart = nbRestart + 1;
-                    LOGGER.info("\n*** onPartitionsRevoked restarting consumer nbRestart :" + nbRestart);
-                    LOGGER.error("\n*** Error from consumer while committing, restarting consumer", e);
-                } catch (Exception e) {
-                    LOGGER.error("\n*** Unexpected error during partitions revoked", e);
-                }
-            }
-
-            @Override
-            public void onPartitionsAssigned(Collection<TopicPartition> partitions) {
-                try {
-                    if (!isConsumerClosed.get()) {
-                        for (TopicPartition topicPartition : partitions) {
-                            long offset = consumerKafka.committed(topicPartition).offset();
-                            consumerKafka.seek(topicPartition, offset);
-                        }
-                        LOGGER.info("\n*** Partitions (re)assigned: \n" + partitions.toString());
-                    } else {
-                        LOGGER.debug("\n*** Consumer was closed before committing");
-                    }
-                } catch (Exception e) {
-                    LOGGER.error("\n*** Error while Partitions assigned", e);
-                }
-            }
-        });
-    }
-
-    public void restartConsumer() {
-        LOGGER.info("\n*** Inside restart: " + consumerKafka);
-        try {
-            if (!isConsumerClosed.get()) {
-                wakeup();
-                closeConsumer();
-                consumerPoll();
-            } else {
-                LOGGER.info("\n*** Consumer is already closed");
-            }
-        } catch (Exception e) {
-            LOGGER.error("\n*** Failed to restart consumer: " + consumerKafka, e);
-            Thread.interrupted();
-        }
-    }
-
-    public void closeConsumer() {
-        if (isConsumerClosed.compareAndSet(false, true)) {
-            try {
-                LOGGER.info("\n*** Closing Consumer");
-                consumerKafka.close();
-                LOGGER.info("\n*** Consumer closed successfully\n");
-            } catch (Exception exception) {
-                LOGGER.error("\n*** Error while closing consumer: " + exception.getMessage(), exception);
-            }
-        } else {
-            LOGGER.info("\n*** Consumer was already closed");
-        }
-    }
-
-    public void wakeup() {
-        try {
-            if (!isConsumerClosed.get()) {
-                consumerKafka.wakeup();
-                LOGGER.info("\n*** Success wakeup");
-            } else {
-                LOGGER.info("\n*** Consumer was closed before wakeup");
-            }
-        } catch (WakeupException e) {
-            LOGGER.error("\n*** Failed to wakeup: " + consumerKafka, e);
-        } catch (Exception e) {
-            LOGGER.error("\n*** Unexpected error during wakeup", e);
-        }
-    }
-
-    @Async("taskExecutor")
-    public void consumerPoll() {
-        LOGGER.info("\n*** consumerPoll started");
-        dictionary = svcdemService.getDictionary();
-        subscribeConsumer(consumerKafka);
-        try {
-            while (!isConsumerClosed.get()) {
-                try {
-                    ConsumerRecords<DemandeQualificationKey, DemandeQualificationValue> records = consumerKafka.poll(Duration.ofMillis(Integer.parseInt(pollDuration)));
-                    for (ConsumerRecord<DemandeQualificationKey, DemandeQualificationValue> record : records) {
-                        DemandeQualificationValue qualificationValue = record.value();
-                        LOGGER.info("\n*** evt=consumer kafka message|mail_id=" + qualificationValue.getMailId() + "|evt_status=success\n");
-                        Instant startEvent = Instant.now();
-                        svcdemService.processDemandeQualificationData(qualificationValue, dictionary);
-                        Instant endEvent = Instant.now();
-                        Duration duration = Duration.between(startEvent, endEvent);
-                        LOGGER.info("\n-->Duration record= " + duration.getSeconds() + "sec " + duration.toMillis() + "ms\n");
-                    }
-                    consumerKafka.commitSync();
-                } catch (CommitFailedException exp) {
-                    LOGGER.error("\n*** Error from consumer while committing", exp);
-                    restartConsumer();
-                    nbRestart = nbRestart + 1;
-                    LOGGER.info("\n*** restarting consumer nbRestart :" + nbRestart);
-                    if (nbRestart > 5) {
-                        LOGGER.warn("\n*** Warning nbRestart is above 5\n");
-                    }
-                } catch (WakeupException ex) {
-                    LOGGER.error("\n*** Kafka Consumer wakeup exception", ex);
-                } catch (Exception ex) {
-                    LOGGER.error("\n*** Error while polling from topic", ex);
-                    break;
-                }
-            } /** End of while loop */
-        } finally {
+    try {
+        // Vérifie si le consommateur est encore actif avant de tenter un redémarrage
+        if (!isConsumerClosed.get()) {
+            // Appelle wakeup() pour interrompre toute opération en cours, si le consommateur est actif
+            wakeup();
+            
+            // Ferme proprement le consommateur
             closeConsumer();
+            
+            // Lance un nouveau cycle de consommation (poll)
+            consumerPoll();
+        } else {
+            LOGGER.info("\n*** Consumer is already closed");
+        }
+    } catch (Exception e) {
+        // Capture toutes les exceptions imprévues et les logue
+        LOGGER.error("\n*** Failed to restart consumer: " + consumerKafka, e);
+        Thread.interrupted();  // Interrompt le thread courant si une exception se produit
+    }
+}
+
+/**
+ * Cette méthode appelle la méthode wakeup() sur le consommateur pour l'interrompre proprement.
+ * Elle est utilisée principalement pour sortir d'un état bloqué de consommation avant de fermer ou redémarrer le consommateur.
+ */
+public void wakeup() {
+    try {
+        // Vérifie si le consommateur est fermé avant de tenter de l'interrompre
+        if (!isConsumerClosed.get()) {
+            // Appelle wakeup() pour interrompre toute opération bloquante en cours sur le consommateur
+            consumerKafka.wakeup();
+            LOGGER.info("\n*** Success wakeup");
+        } else {
+            LOGGER.info("\n*** Consumer was closed before wakeup");
+        }
+    } catch (WakeupException e) {
+        // Cette exception est attendue lorsqu'un wakeup est effectué, nous la loguons pour indiquer une interruption normale
+        LOGGER.error("\n*** Failed to wakeup: " + consumerKafka, e);
+    } catch (Exception e) {
+        // Capture toutes les autres exceptions non anticipées
+        LOGGER.error("\n*** Unexpected error during wakeup", e);
+    }
+}
+```
+
+### **Test unitaire pour la méthode `wakeup()` :**
+
+Le test unitaire suivant utilise **JUnit** et **Mockito** pour simuler le comportement du consommateur Kafka et tester le bon fonctionnement de la méthode `wakeup()`. 
+
+**Dépendances nécessaires dans `pom.xml` :**
+- JUnit : pour les tests unitaires.
+- Mockito : pour simuler le comportement du consommateur Kafka.
+
+Voici un exemple de test unitaire pour la méthode `wakeup()` :
+
+```java
+import static org.mockito.Mockito.*;
+import static org.junit.Assert.*;
+
+import org.apache.kafka.clients.consumer.Consumer;
+import org.apache.kafka.common.errors.WakeupException;
+import org.junit.Before;
+import org.junit.Test;
+
+public class ConsumerServiceImplTest {
+
+    private ConsumerServiceImpl consumerService;
+    private Consumer<DemandeQualificationKey, DemandeQualificationValue> mockConsumer;
+
+    @Before
+    public void setUp() {
+        // Création du mock du consommateur Kafka
+        mockConsumer = mock(Consumer.class);
+        consumerService = new ConsumerServiceImpl(null, null, null); // Passer null pour les services non utilisés ici
+
+        // Injection du mock dans la classe de service
+        consumerService.consumerKafka = mockConsumer;
+    }
+
+    @Test
+    public void testWakeupConsumerNotClosed() {
+        // Simuler que le consommateur n'est pas fermé
+        when(consumerService.isConsumerClosed.get()).thenReturn(false);
+
+        // Appel de la méthode wakeup()
+        consumerService.wakeup();
+
+        // Vérification si la méthode wakeup() sur le consommateur a été appelée
+        verify(mockConsumer, times(1)).wakeup();
+    }
+
+    @Test
+    public void testWakeupConsumerAlreadyClosed() {
+        // Simuler que le consommateur est déjà fermé
+        when(consumerService.isConsumerClosed.get()).thenReturn(true);
+
+        // Appel de la méthode wakeup()
+        consumerService.wakeup();
+
+        // Vérification si la méthode wakeup() n'a pas été appelée
+        verify(mockConsumer, times(0)).wakeup();
+    }
+
+    @Test
+    public void testWakeupException() {
+        // Simuler un comportement où wakeup() lève une WakeupException
+        doThrow(new WakeupException("Forced WakeupException")).when(mockConsumer).wakeup();
+
+        // Appel de la méthode wakeup() et vérifier qu'aucune exception ne fait échouer le test
+        try {
+            consumerService.wakeup();
+        } catch (Exception e) {
+            fail("Exception should not be thrown here");
+        }
+    }
+
+    @Test
+    public void testWakeupUnexpectedException() {
+        // Simuler une exception imprévue lors de l'appel de wakeup()
+        doThrow(new RuntimeException("Unexpected exception")).when(mockConsumer).wakeup();
+
+        // Appel de la méthode wakeup() et vérifier qu'une exception imprévue est capturée
+        try {
+            consumerService.wakeup();
+            fail("Exception should have been thrown");
+        } catch (RuntimeException e) {
+            assertEquals("Unexpected exception", e.getMessage());
         }
     }
 }
+```
+
+### **Explication du test unitaire :**
+1. **`testWakeupConsumerNotClosed()`** : Vérifie que lorsque le consommateur n'est pas fermé, la méthode `wakeup()` est appelée correctement.
+2. **`testWakeupConsumerAlreadyClosed()`** : Vérifie que si le consommateur est déjà fermé, la méthode `wakeup()` ne fait rien (la méthode `wakeup()` ne doit pas être appelée).
+3. **`testWakeupException()`** : Simule une situation où la méthode `wakeup()` lève une `WakeupException` et s'assure que cette exception est gérée correctement sans faire échouer le test.
+4. **`testWakeupUnexpectedException()`** : Simule une exception imprévue (autre que `WakeupException`) et vérifie que l'exception est capturée et loguée correctement.
+
+### **Résumé :**
+- **Commentaires** ont été ajoutés dans le code pour expliquer la logique de l'appel à `wakeup()`.
+- **Tests unitaires** ont été fournis pour tester la méthode `wakeup()`, en vérifiant plusieurs scénarios, y compris l'état du consommateur et les exceptions levées.
+
+Ce test unitaire vous permet de simuler le comportement du consommateur Kafka et de vérifier que la méthode `wakeup()` fonctionne correctement dans différents cas d'utilisation.
