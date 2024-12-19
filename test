@@ -1,21 +1,62 @@
-@Test
-	void testGetPrediction() throws Exception {
-		String mail = "Bonjour, Prise de rdv, je souhaite un rdv pour le 26/01 pour le changement de plafond de ma CB" ;
-		MailRequest mailRequest = new MailRequest("123", mail );
-		MockHttpServletResponse response = mockMvc.perform(MockMvcRequestBuilders.post("/getPrediction")
-									    		  .contentType(MediaType.APPLICATION_JSON)
-									    		  .content(String.valueOf(mailRequest)))
-									    		  .andReturn().getResponse();
-		if(response.getStatus() == HttpStatus.OK.value()){
-			Category cat1 = new Category("CARTE-BANCAIRE_CHANGEMENT-PLAFOND", 0.8711363077163696) ;
-			Category cat2 = new Category("RDV_CONFIRMATION-CALAGE", 0.7130698561668396) ;
-			Category cat3 = new Category("RDV_PRISE-DE-RDV", 0.6180949807167053) ;
-			List<Category> categoryTests = new ArrayList<>();
-			categoryTests.add(cat1);
-			categoryTests.add(cat2);
-			categoryTests.add(cat3);
-			Prediction predictionTest = new Prediction(categoryTests);
-			Prediction prediction  = objectMapper.readValue(response.getContentAsString(), Prediction.class);
-			assertThat(prediction.equals(predictionTest));
-		}
-	}
+import static org.mockito.Mockito.*;
+import static org.junit.Assert.*;
+import org.junit.Before;
+import org.junit.Test;
+import org.mockito.Mock;
+import org.mockito.MockitoAnnotations;
+import org.powermock.api.mockito.PowerMockito;
+import org.apache.kafka.clients.consumer.Consumer;
+import org.mockito.Mockito;
+
+public class ConsumerServiceImplTest {
+
+    private ConsumerServiceImpl consumerService;
+
+    @Mock
+    private Consumer<DemandeQualificationKey, DemandeQualificationValue> mockConsumer;
+
+    @Mock
+    private AtomicBoolean mockAtomicBoolean;
+
+    @Before
+    public void setUp() {
+        // Initialisation des mocks
+        MockitoAnnotations.initMocks(this);
+
+        // Création de l'objet consumerService avec des dépendances mockées
+        consumerService = new ConsumerServiceImpl(null, null, null); // Passer null si nécessaire pour les services non utilisés ici
+        consumerService.consumerKafka = mockConsumer;
+
+        // Utilisation de PowerMockito pour simuler le comportement de la variable statique isConsumerClosed
+        PowerMockito.mockStatic(AtomicBoolean.class);
+        
+        // Mock de l'AtomicBoolean statique
+        mockAtomicBoolean = mock(AtomicBoolean.class);
+        when(mockAtomicBoolean.get()).thenReturn(false);
+        
+        // Injection du mock AtomicBoolean dans la classe ConsumerServiceImpl
+        // Ici, on utilise un setter ou une méthode de simulation pour injecter la dépendance statique
+        consumerService.isConsumerClosed = mockAtomicBoolean;
+    }
+
+    @Test
+    public void testWakeupConsumerNotClosed() {
+        // Appeler la méthode wakeup() et vérifier si la méthode wakeup() sur le consommateur est appelée
+        consumerService.wakeup();
+
+        // Vérification si la méthode wakeup() a bien été appelée sur le consommateur
+        verify(mockConsumer, times(1)).wakeup();
+    }
+
+    @Test
+    public void testWakeupConsumerAlreadyClosed() {
+        // Simuler que le consommateur est déjà fermé
+        when(mockAtomicBoolean.get()).thenReturn(true);
+
+        // Appeler wakeup() quand le consommateur est déjà fermé
+        consumerService.wakeup();
+
+        // Vérification que wakeup() n'est pas appelée lorsque le consommateur est déjà fermé
+        verify(mockConsumer, times(0)).wakeup();
+    }
+}
