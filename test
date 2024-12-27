@@ -1,153 +1,107 @@
-package fr.ca.cats.p1354.s3601.svcllm.service.impl;
+package fr.ca.cats.p1354.s3601.svcllm.controller;
 
 import static org.mockito.Mockito.*;
 import static org.junit.jupiter.api.Assertions.*;
 
-import fr.ca.cats.p1354.s3601.svcllm.model.*;
-import fr.ca.cats.p1354.s3601.svcllm.service.*;
-import fr.ca.cats.p1354.s3601.svcllm.utils.KafkaPropertiesLoader;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
-import org.apache.kafka.clients.consumer.KafkaConsumer;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
+import fr.ca.cats.p1354.s3601.svcllm.model.Chat;
+import fr.ca.cats.p1354.s3601.svcllm.model.DemandeSuggestionEmails;
+import fr.ca.cats.p1354.s3601.svcllm.service.ConsumerKafkaService;
+import fr.ca.cats.p1354.s3601.svcllm.service.LLMAccessService;
+import fr.ca.cats.p1354.s3601.svcllm.service.SvcllmService;
+import fr.ca.cats.p1354.s3601.svcllm.service.impl.ConsumerKafkaServiceImpl;
+import fr.ca.cats.p1354.s3601.svcllm.service.ProducerKafkaService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
-import org.mockito.Spy;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
-import java.time.Duration;
-import java.util.Properties;
-import java.util.Collections;
-
-class ConsumerKafkaServiceImplTest {
+class SvcllmControllerTest {
 
     @Mock
-    private ProducerKafkaService producerKafkaService;
+    private ConsumerKafkaServiceImpl consumer;
+
+    @Mock
+    private ProducerKafkaService producer;
 
     @Mock
     private LLMAccessService llmAccessService;
 
     @Mock
+    private ConsumerKafkaService consumerKafkaService;
+
+    @Mock
     private SvcllmService svcllmService;
 
-    @Mock
-    private AESUtilService aESUtilService;
-
-    @Mock
-    private KafkaConsumer<DemandeSuggestionKey, DemandeSuggestionValue> kafkaConsumer;
-
-    @Mock
-    private ConsumerRecords<DemandeSuggestionKey, DemandeSuggestionValue> consumerRecords;
-
-    @Mock
-    private ConsumerRecord<DemandeSuggestionKey, DemandeSuggestionValue> consumerRecord;
-
-    @Spy
     @InjectMocks
-    private ConsumerKafkaServiceImpl service;
-
-    private Properties mockedProperties;
+    private SvcllmController controller;
 
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
-        mockedProperties = new Properties();
-        mockedProperties.setProperty("value.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
-        mockedProperties.setProperty("key.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
-        mockedProperties.setProperty("bootstrap.servers", "localhost:9092");
-        mockedProperties.setProperty("group.id", "test-group");
-        mockedProperties.setProperty("schema.registry.url", "http://localhost:8081");
-        mockedProperties.setProperty("schema.registry.basic.auth.user.info", "user:password");
-
-        when(KafkaPropertiesLoader.loadKafkaProperties(anyString())).thenReturn(mockedProperties);
     }
 
     @Test
-    void testInit() {
-        service.init();
+    void testStart() {
+        ResponseEntity<String> expectedResponse = ResponseEntity.ok("Success");
+        when(consumerKafkaService.start(consumer)).thenReturn(expectedResponse);
 
-        assertNotNull(service.getKafkaConsumer());
+        ResponseEntity<String> response = controller.start();
+
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        verify(consumerKafkaService).start(consumer);
     }
 
     @Test
-    void testScheduleStopLocal() {
-        service.scheduleStopLocal();
-        assertFalse(service.getIsActiveLocal());
-    }
+    void testStartException() {
+        when(consumerKafkaService.start(consumer)).thenThrow(new RuntimeException("Service error"));
 
-    @Test
-    void testSetIsActiveLocal() {
-        service.setIsActiveLocal(true);
-        assertTrue(service.getIsActiveLocal());
+        ResponseEntity<String> response = controller.start();
 
-        service.setIsActiveLocal(false);
-        assertFalse(service.getIsActiveLocal());
-    }
-
-    @Test
-    void testStartKafkaWhenActive() {
-        doReturn(kafkaConsumer).when(service).getKafkaConsumer(); // Simulez la méthode
-        when(kafkaConsumer.poll(Duration.ofMillis(1000))).thenReturn(consumerRecords);
-
-        service.setIsActiveLocal(true);
-        service.startKafka(service);
-
-        verify(kafkaConsumer, atLeastOnce()).poll(any(Duration.class));
-    }
-
-    @Test
-    void testStartKafkaHandlesException() {
-        doReturn(kafkaConsumer).when(service).getKafkaConsumer(); // Simulez la méthode
-        when(kafkaConsumer.poll(any(Duration.class))).thenThrow(new RuntimeException("Polling error"));
-
-        service.setIsActiveLocal(true);
-
-        assertDoesNotThrow(() -> service.startKafka(service));
-    }
-
-    @Test
-    void testStartKafkaCoreHandlesLLMError() {
-        DemandeSuggestionValue suggestionValue = mock(DemandeSuggestionValue.class);
-        when(suggestionValue.getMailId()).thenReturn("12345");
-
-        when(consumerRecords.iterator()).thenReturn(Collections.singletonList(consumerRecord).iterator());
-        when(consumerRecord.value()).thenReturn(suggestionValue);
-
-        doNothing().when(llmAccessService).send(any(ChatRequest.class), anyString());
-
-        service.startKafkaCore(service);
-
-        verify(llmAccessService, times(1)).send(any(ChatRequest.class), anyString());
-        verify(aESUtilService, never()).encrypt(anyString());
-    }
-
-    @Test
-    void testStartSuccess() {
-        doNothing().when(service).scheduleStart(any(ConsumerKafkaServiceImpl.class));
-
-        ResponseEntity<String> response = service.start(service);
-
-        assertEquals(200, response.getStatusCodeValue());
-        assertTrue(response.getBody().contains("ok"));
-    }
-
-    @Test
-    void testStartFailure() {
-        doThrow(new RuntimeException("Start error")).when(service).scheduleStart(any(ConsumerKafkaServiceImpl.class));
-
-        ResponseEntity<String> response = service.start(service);
-
-        assertEquals(500, response.getStatusCodeValue());
+        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getStatusCode());
         assertTrue(response.getBody().contains("KO"));
     }
 
     @Test
-    void testScheduleStartHandlesException() {
-        doThrow(new RuntimeException("Schedule start error")).when(service).init();
+    void testStop() {
+        when(consumer.getIsActiveLocal()).thenReturn(false);
 
-        assertDoesNotThrow(() -> service.scheduleStart(service));
-        assertFalse(service.getIsActiveLocal());
+        String response = controller.stop();
+
+        assertTrue(response.contains("isActive= false"));
+        verify(consumer).scheduleStopLocal();
+    }
+
+    @Test
+    void testStopException() {
+        doThrow(new RuntimeException("Stop error")).when(consumer).scheduleStopLocal();
+
+        String response = controller.stop();
+
+        assertTrue(response.contains("Exception"));
+    }
+
+    @Test
+    void testPromptBuilder() {
+        DemandeSuggestionEmails prompt = new DemandeSuggestionEmails();
+        Chat expectedChat = new Chat();
+        when(svcllmService.promptBuilder(prompt)).thenReturn(expectedChat);
+
+        Chat response = controller.promptBuilder(prompt);
+
+        assertEquals(expectedChat, response);
+        verify(svcllmService).promptBuilder(prompt);
+    }
+
+    @Test
+    void testPromptBuilderException() {
+        DemandeSuggestionEmails prompt = new DemandeSuggestionEmails();
+        when(svcllmService.promptBuilder(prompt)).thenThrow(new RuntimeException("Prompt error"));
+
+        Chat response = controller.promptBuilder(prompt);
+
+        assertNull(response);
     }
 }
