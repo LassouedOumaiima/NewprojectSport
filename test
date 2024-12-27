@@ -18,6 +18,7 @@ import org.springframework.http.ResponseEntity;
 
 import java.time.Duration;
 import java.util.Properties;
+import java.util.Collections;
 
 class ConsumerKafkaServiceImplTest {
 
@@ -120,7 +121,7 @@ class ConsumerKafkaServiceImplTest {
 
     @Test
     void testStartSuccess() {
-        doNothing().when(service).scheduleStart(service);
+        doNothing().when(service).scheduleStart(any());
 
         ResponseEntity<String> response = service.start(service);
 
@@ -130,7 +131,7 @@ class ConsumerKafkaServiceImplTest {
 
     @Test
     void testStartFailure() {
-        doThrow(new RuntimeException("Start error")).when(service).scheduleStart(service);
+        doThrow(new RuntimeException("Start error")).when(service).scheduleStart(any());
 
         ResponseEntity<String> response = service.start(service);
 
