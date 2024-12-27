@@ -1,126 +1,111 @@
-package fr.ca.cats.p1354.s3601.svcllm.service.impl;
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+SLF4J(W): Class path contains multiple SLF4J providers.
+SLF4J(W): Found provider [ch.qos.logback.classic.spi.LogbackServiceProvider@255eaa6b]
+SLF4J(W): Found provider [org.apache.logging.slf4j.SLF4JServiceProvider@476fe690]
+SLF4J(W): See https://www.slf4j.org/codes.html#multiple_bindings for an explanation.
+SLF4J(I): Actual provider is of type [ch.qos.logback.classic.spi.LogbackServiceProvider@255eaa6b]
+15:23:41.590 [main] INFO fr.ca.cats.p1354.s3601.svcllm.utils.KafkaPropertiesLoader -- 
+***** Missing application-kafka.properties for Consumer 
 
-import static org.mockito.Mockito.*;
-import static org.junit.jupiter.api.Assertions.*;
 
-import fr.ca.cats.p1354.s3601.svcllm.model.*;
-import fr.ca.cats.p1354.s3601.svcllm.service.*;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
-import org.apache.kafka.clients.consumer.KafkaConsumer;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
-import org.springframework.http.ResponseEntity;
+java.lang.NullPointerException
+	at java.base/java.util.concurrent.ConcurrentHashMap.putVal(ConcurrentHashMap.java:1011)
+	at java.base/java.util.concurrent.ConcurrentHashMap.put(ConcurrentHashMap.java:1006)
+	at java.base/java.util.Properties.put(Properties.java:1301)
+	at fr.ca.cats.p1354.s3601.svcllm.service.impl.ConsumerKafkaServiceImpl.createConsumerFromProperties(ConsumerKafkaServiceImpl.java:128)
+	at fr.ca.cats.p1354.s3601.svcllm.service.impl.ConsumerKafkaServiceImpl.init(ConsumerKafkaServiceImpl.java:102)
+	at fr.ca.cats.p1354.s3601.svcllm.service.impl.ConsumerKafkaServiceImplTest.testInit(ConsumerKafkaServiceTest.java:48)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:568)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
 
-import java.time.Duration;
 
-class ConsumerKafkaServiceImplTest {
+org.mockito.exceptions.misusing.NotAMockException: 
+Argument passed to when() is not a mock!
+Example of correct stubbing:
+    doThrow(new RuntimeException()).when(mock).someMethod();
 
-    @Mock
-    private ProducerKafkaService producerKafkaService;
+	at fr.ca.cats.p1354.s3601.svcllm.service.impl.ConsumerKafkaServiceImplTest.testStartSuccess(ConsumerKafkaServiceTest.java:98)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:568)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
 
-    @Mock
-    private LLMAccessService llmAccessService;
 
-    @Mock
-    private SvcllmService svcllmService;
+org.mockito.exceptions.misusing.NotAMockException: 
+Argument passed to when() is not a mock!
+Example of correct stubbing:
+    doThrow(new RuntimeException()).when(mock).someMethod();
 
-    @Mock
-    private AESUtilService aESUtilService;
+	at fr.ca.cats.p1354.s3601.svcllm.service.impl.ConsumerKafkaServiceImplTest.testStartFailure(ConsumerKafkaServiceTest.java:108)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:568)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
 
-    @Mock
-    private KafkaConsumer<?, ?> kafkaConsumer;
+15:23:41.816 [main] ERROR fr.ca.cats.p1354.s3601.svcllm.service.impl.ConsumerKafkaServiceImpl -- 
+Exception raised from Kafka thread= 
+Cannot enter synchronized block because "kafkaConsumer" is null
+15:23:41.817 [main] INFO fr.ca.cats.p1354.s3601.svcllm.service.impl.ConsumerKafkaServiceImpl -- 
+Exception raised from Controller thread --> leaving Kafka thread 
 
-    @InjectMocks
-    private ConsumerKafkaServiceImpl service;
+15:23:41.817 [main] INFO fr.ca.cats.p1354.s3601.svcllm.service.impl.ConsumerKafkaServiceImpl -- 
+*** startKafka: kafkaConsumer is null; 
 
-    @BeforeEach
-    void setUp() {
-        MockitoAnnotations.openMocks(this);
-        service.setPropertiesKafka("path/to/properties");
-    }
+org.opentest4j.AssertionFailedError: Unexpected exception thrown: java.lang.NullPointerException: Cannot enter synchronized block because "kafkaConsumer" is null
 
-    @Test
-    void testInit() {
-        service.init();
+	at org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:152)
+	at org.junit.jupiter.api.AssertDoesNotThrow.createAssertionFailedError(AssertDoesNotThrow.java:84)
+	at org.junit.jupiter.api.AssertDoesNotThrow.assertDoesNotThrow(AssertDoesNotThrow.java:53)
+	at org.junit.jupiter.api.AssertDoesNotThrow.assertDoesNotThrow(AssertDoesNotThrow.java:36)
+	at org.junit.jupiter.api.Assertions.assertDoesNotThrow(Assertions.java:3168)
+	at fr.ca.cats.p1354.s3601.svcllm.service.impl.ConsumerKafkaServiceImplTest.testStartKafkaHandlesException(ConsumerKafkaServiceTest.java:82)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:568)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+Caused by: java.lang.NullPointerException: Cannot enter synchronized block because "kafkaConsumer" is null
+	at fr.ca.cats.p1354.s3601.svcllm.service.impl.ConsumerKafkaServiceImpl.startKafka(ConsumerKafkaServiceImpl.java:182)
+	at fr.ca.cats.p1354.s3601.svcllm.service.impl.ConsumerKafkaServiceImplTest.lambda$testStartKafkaHandlesException$0(ConsumerKafkaServiceTest.java:82)
+	at org.junit.jupiter.api.AssertDoesNotThrow.assertDoesNotThrow(AssertDoesNotThrow.java:49)
+	... 6 more
 
-        assertNotNull(service.getKafkaConsumer());
-    }
+15:23:42.225 [main] INFO fr.ca.cats.p1354.s3601.svcllm.service.impl.ConsumerKafkaServiceImpl -- 
+*** startKafkaCore() :  isActive= true
 
-    @Test
-    void testScheduleStopLocal() {
-        service.scheduleStopLocal();
-        assertFalse(service.getIsActiveLocal());
-    }
 
-    @Test
-    void testSetIsActiveLocal() {
-        service.setIsActiveLocal(true);
-        assertTrue(service.getIsActiveLocal());
+java.lang.NullPointerException: Cannot invoke "fr.ca.cats.p1354.DemandeSuggestionValue.getMailId()" because "this.suggestionValue" is null
 
-        service.setIsActiveLocal(false);
-        assertFalse(service.getIsActiveLocal());
-    }
+	at fr.ca.cats.p1354.s3601.svcllm.service.impl.ConsumerKafkaServiceImpl.startKafkaCore(ConsumerKafkaServiceImpl.java:211)
+	at fr.ca.cats.p1354.s3601.svcllm.service.impl.ConsumerKafkaServiceImplTest.testStartKafkaCoreHandlesLLMError(ConsumerKafkaServiceTest.java:90)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:568)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
 
-    @Test
-    void testStartKafkaWhenActive() {
-        when(service.getKafkaConsumer()).thenReturn(kafkaConsumer);
-        when(kafkaConsumer.poll(Duration.ofMillis(1000))).thenReturn(ConsumerRecords.empty());
 
-        service.setIsActiveLocal(true);
-        service.startKafka(service);
+org.mockito.exceptions.misusing.NotAMockException: 
+Argument passed to when() is not a mock!
+Example of correct stubbing:
+    doThrow(new RuntimeException()).when(mock).someMethod();
 
-        verify(kafkaConsumer, atLeastOnce()).poll(any(Duration.class));
-    }
+	at fr.ca.cats.p1354.s3601.svcllm.service.impl.ConsumerKafkaServiceImplTest.testScheduleStartHandlesException(ConsumerKafkaServiceTest.java:118)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:568)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
 
-    @Test
-    void testStartKafkaHandlesException() {
-        when(service.getKafkaConsumer()).thenReturn(kafkaConsumer);
-        when(kafkaConsumer.poll(any(Duration.class))).thenThrow(new RuntimeException("Polling error"));
+15:23:42.311 [main] ERROR fr.ca.cats.p1354.s3601.svcllm.service.impl.ConsumerKafkaServiceImpl -- 
+Exception raised from Kafka thread= 
+Cannot enter synchronized block because "kafkaConsumer" is null
+15:23:42.312 [main] INFO fr.ca.cats.p1354.s3601.svcllm.service.impl.ConsumerKafkaServiceImpl -- 
+Exception raised from Controller thread --> leaving Kafka thread 
 
-        service.setIsActiveLocal(true);
+15:23:42.312 [main] INFO fr.ca.cats.p1354.s3601.svcllm.service.impl.ConsumerKafkaServiceImpl -- 
+*** startKafka: kafkaConsumer is null; 
 
-        assertDoesNotThrow(() -> service.startKafka(service));
-    }
+java.lang.NullPointerException: Cannot enter synchronized block because "kafkaConsumer" is null
 
-    @Test
-    void testStartKafkaCoreHandlesLLMError() {
-        DemandeSuggestionValue suggestionValue = mock(DemandeSuggestionValue.class);
-        when(suggestionValue.getMailId()).thenReturn("12345");
+	at fr.ca.cats.p1354.s3601.svcllm.service.impl.ConsumerKafkaServiceImpl.startKafka(ConsumerKafkaServiceImpl.java:182)
+	at fr.ca.cats.p1354.s3601.svcllm.service.impl.ConsumerKafkaServiceImplTest.testStartKafkaWhenActive(ConsumerKafkaServiceTest.java:73)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:568)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
 
-        service.startKafkaCore(service);
 
-        verify(llmAccessService, times(1)).send(any(ChatRequest.class), anyString());
-        verify(aESUtilService, never()).encrypt(anyString());
-    }
-
-    @Test
-    void testStartSuccess() {
-        doNothing().when(service).scheduleStart(service);
-
-        ResponseEntity<String> response = service.start(service);
-
-        assertEquals(200, response.getStatusCodeValue());
-        assertTrue(response.getBody().contains("ok"));
-    }
-
-    @Test
-    void testStartFailure() {
-        doThrow(new RuntimeException("Start error")).when(service).scheduleStart(service);
-
-        ResponseEntity<String> response = service.start(service);
-
-        assertEquals(500, response.getStatusCodeValue());
-        assertTrue(response.getBody().contains("KO"));
-    }
-
-    @Test
-    void testScheduleStartHandlesException() {
-        doThrow(new RuntimeException("Schedule start error")).when(service).init();
-
-        assertDoesNotThrow(() -> service.scheduleStart(service));
-        assertFalse(service.getIsActiveLocal());
-    }
-}
+Process finished with exit code -1
