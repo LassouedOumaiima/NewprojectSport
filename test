@@ -1,27 +1,16 @@
-@Test
-void testStartKafkaWithRecords() {
-    // Create mock records
-    DemandeSuggestionKey mockKey = mock(DemandeSuggestionKey.class);
-    DemandeSuggestionValue mockValue = mock(DemandeSuggestionValue.class);
+Hello, j'espère que tu vas bien, 
 
-    ConsumerRecords<DemandeSuggestionKey, DemandeSuggestionValue> mockRecords = new ConsumerRecords<>(
-        Map.of(new TopicPartition("test-topic", 0),
-            List.of(new ConsumerRecord<>("test-topic", 0, 0, mockKey, mockValue))
-        )
-    );
+je vais te donner un rickape pour les travaux qui j'ai fait pour le ticket de refacorisation des codes java:
 
-    // Configure the mocked KafkaConsumer
-    doReturn(kafkaConsumer).when(service).getKafkaConsumer();
-    when(kafkaConsumer.poll(any())).thenReturn(mockRecords);
+Pour ress-sugg: j'ai refactoriser la methode de récupération de demande de suggestion et pour les logs
+Pour ress-svcllm : j'ai travaillés sur la refacoristion des codes java notamenet le controller séparation de la logique metier et la création d'interface pour chaque class pour pratique le bonne pratique de l'injection de depondence et j'ai commencé de travaillées sur la tests unitaire.
 
-    // Set the consumer to active
-    service.setIsActiveLocal(true);
+Restes à faire : 
 
-    // Call the method under test
-    assertDoesNotThrow(() -> service.startKafka(service));
+Les tests unitaire pour ress-svcllm
+Les tests unitaire pour ress-sugg
+Les logs pour ress-svcllm 
 
-    // Verify interactions
-    verify(kafkaConsumer, atLeastOnce()).poll(any());
-    verify(kafkaConsumer, atLeastOnce()).commitSync();
-    verify(kafkaConsumer, atLeastOnce()).close();
-}
+Une remarque : 
+
+pour le point "Intégrer la parallélisation avec @Async("taskExecutor")" je propose que on mettre dans le ticket de refcatorisation des code kafka.
