@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
+import org.mockito.Spy;
 import org.springframework.http.ResponseEntity;
 
 import java.time.Duration;
@@ -43,6 +44,7 @@ class ConsumerKafkaServiceImplTest {
     @Mock
     private ConsumerRecord<DemandeSuggestionKey, DemandeSuggestionValue> consumerRecord;
 
+    @Spy
     @InjectMocks
     private ConsumerKafkaServiceImpl service;
 
@@ -86,7 +88,7 @@ class ConsumerKafkaServiceImplTest {
 
     @Test
     void testStartKafkaWhenActive() {
-        when(service.getKafkaConsumer()).thenReturn(kafkaConsumer);
+        doReturn(kafkaConsumer).when(service).getKafkaConsumer(); // Simulez la méthode
         when(kafkaConsumer.poll(Duration.ofMillis(1000))).thenReturn(consumerRecords);
 
         service.setIsActiveLocal(true);
@@ -97,7 +99,7 @@ class ConsumerKafkaServiceImplTest {
 
     @Test
     void testStartKafkaHandlesException() {
-        when(service.getKafkaConsumer()).thenReturn(kafkaConsumer);
+        doReturn(kafkaConsumer).when(service).getKafkaConsumer(); // Simulez la méthode
         when(kafkaConsumer.poll(any(Duration.class))).thenThrow(new RuntimeException("Polling error"));
 
         service.setIsActiveLocal(true);
@@ -113,6 +115,8 @@ class ConsumerKafkaServiceImplTest {
         when(consumerRecords.iterator()).thenReturn(Collections.singletonList(consumerRecord).iterator());
         when(consumerRecord.value()).thenReturn(suggestionValue);
 
+        doNothing().when(llmAccessService).send(any(ChatRequest.class), anyString());
+
         service.startKafkaCore(service);
 
         verify(llmAccessService, times(1)).send(any(ChatRequest.class), anyString());
@@ -121,7 +125,7 @@ class ConsumerKafkaServiceImplTest {
 
     @Test
     void testStartSuccess() {
-        doNothing().when(service).scheduleStart(any());
+        doNothing().when(service).scheduleStart(any(ConsumerKafkaServiceImpl.class));
 
         ResponseEntity<String> response = service.start(service);
 
@@ -131,7 +135,7 @@ class ConsumerKafkaServiceImplTest {
 
     @Test
     void testStartFailure() {
-        doThrow(new RuntimeException("Start error")).when(service).scheduleStart(any());
+        doThrow(new RuntimeException("Start error")).when(service).scheduleStart(any(ConsumerKafkaServiceImpl.class));
 
         ResponseEntity<String> response = service.start(service);
 
