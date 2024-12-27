@@ -1,129 +1,107 @@
 package fr.ca.cats.p1354.s3601.svcllm.controller;
 
+import static org.mockito.Mockito.*;
+import static org.junit.jupiter.api.Assertions.*;
 
-import fr.ca.cats.p0070.s1889.logging.service.Logger;
-import fr.ca.cats.p0070.s1889.logging.service.LoggerService;
-import fr.ca.cats.p1354.s3601.svcllm.model.*;
-import fr.ca.cats.p1354.s3601.svcllm.service.*;
+import fr.ca.cats.p1354.s3601.svcllm.model.Chat;
+import fr.ca.cats.p1354.s3601.svcllm.model.DemandeSuggestionEmails;
+import fr.ca.cats.p1354.s3601.svcllm.service.ConsumerKafkaService;
+import fr.ca.cats.p1354.s3601.svcllm.service.LLMAccessService;
+import fr.ca.cats.p1354.s3601.svcllm.service.SvcllmService;
 import fr.ca.cats.p1354.s3601.svcllm.service.impl.ConsumerKafkaServiceImpl;
-import io.swagger.v3.oas.annotations.Hidden;
-import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.annotation.PostConstruct;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
+import fr.ca.cats.p1354.s3601.svcllm.service.ProducerKafkaService;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.MockitoAnnotations;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
 
-@RestController
-@RequestMapping(value = "/")
-@Tag(name = "TraitementSuggestionReponse")
-public class SvcllmController  {
+class SvcllmControllerTest {
 
-	private static final Logger LOGGER = LoggerService.getLogger(SvcllmController.class);
+    @Mock
+    private ConsumerKafkaServiceImpl consumer;
 
-	ConsumerKafkaServiceImpl consumer;
+    @Mock
+    private ProducerKafkaService producer;
 
-	ProducerKafkaService producer;
+    @Mock
+    private LLMAccessService llmAccessService;
 
-	LLMAccessService llmAccessService;
+    @Mock
+    private ConsumerKafkaService consumerKafkaService;
 
-	@Value("${POLL_DURATION_MS}")
-	String pollDurationMS ;
+    @Mock
+    private SvcllmService svcllmService;
 
-	@Value("${url.subscription}")
-	String urlSubscription ;
+    @InjectMocks
+    private SvcllmController controller;
 
-	@Value("${secretkey}")
-	String secretkey ;
+    @BeforeEach
+    void setUp() {
+        MockitoAnnotations.openMocks(this);
+    }
 
-	/*Proxy credentials */
-	@Value("${proxy.host}")
-	String hostname ;
+    @Test
+    void testStart() {
+        ResponseEntity<String> expectedResponse = ResponseEntity.ok("Success");
+        when(consumerKafkaService.start(consumer)).thenReturn(expectedResponse);
 
-	@Value("${proxy.port}")
-	int port ;
+        ResponseEntity<String> response = controller.start();
 
-	@Value("${proxy.userName}")
-	String username ;
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        verify(consumerKafkaService).start(consumer);
+    }
 
-	@Value("${proxy.userPassword}")
-	char[] password ;
+    @Test
+    void testStartException() {
+        when(consumerKafkaService.start(consumer)).thenThrow(new RuntimeException("Service error"));
 
-	ConsumerKafkaService consumerKafkaService;
+        ResponseEntity<String> response = controller.start();
 
-	SvcllmService svcllmService ;
+        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getStatusCode());
+        assertTrue(response.getBody().contains("KO"));
+    }
 
-	@Autowired
-	public SvcllmController(ConsumerKafkaServiceImpl consumer, ProducerKafkaService producer, LLMAccessService llmAccessService, ConsumerKafkaService consumerKafkaService, SvcllmService svcllmService) {
-		this.consumer = consumer;
-		this.producer = producer;
-		this.llmAccessService = llmAccessService;
-		this.consumerKafkaService = consumerKafkaService;
-		this.svcllmService = svcllmService;
-	}
+    @Test
+    void testStop() {
+        when(consumer.getIsActiveLocal()).thenReturn(false);
 
-	@PostConstruct
-	protected void startThread() {
-		consumer.setIsActiveLocal(true);
-		llmAccessService.buildProxy(hostname, port, username, password);
-		this.svcllmControllerThread.start();
-	}
+        String response = controller.stop();
 
-	protected final Thread svcllmControllerThread = new Thread(() -> {
-		try {
-			LOGGER.info("IN new Thread() -- Print value of isActive :" + consumer.getIsActiveLocal());
-			consumerKafkaService.scheduleStart(consumer);
-			LOGGER.info("*** new Thread(): leaving thread, isActive :" + consumer.getIsActiveLocal());
-		} catch (Exception e) {
-			LOGGER.error("*** new Thread(): Exception= " +e.getMessage()+"\n");
-		}
-	});
+        assertTrue(response.contains("isActive= false"));
+        verify(consumer).scheduleStopLocal();
+    }
 
-	@Hidden
-	@PostMapping("consumerStart")
-	public ResponseEntity <String> start() {
-		String messageStatus = null;
-		ResponseEntity responseEntity = null;
-		try {
-			responseEntity = consumerKafkaService.start(consumer);
-			LOGGER.info("\n***{ \"action start\" : \"ok\" }");
-		} catch (Exception e) {
-			messageStatus = "\n***{ \"action start\" : \"KO\" , \"Exception\" : "+e.getMessage()+"}";
-			responseEntity = ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(messageStatus);
-			LOGGER.error(messageStatus);
-		}
-		return responseEntity;
-	}
+    @Test
+    void testStopException() {
+        doThrow(new RuntimeException("Stop error")).when(consumer).scheduleStopLocal();
 
-	@Hidden
-	@PostMapping("consumerStop")
-	public String stop() {
-		String message = null;
-		try {
-			consumer.scheduleStopLocal();
-			message = "\n*** stop(): isActive= " + consumer.getIsActiveLocal()+"\n";
-			LOGGER.info(message);
-		} catch (Exception e) {
-			LOGGER.error( "\n*** stop(): Exception= \n"+e.getMessage()+"\n");
-		}
-		return message;
-	}
+        String response = controller.stop();
 
-	/* Methode pour récupérer des prompts à partir de l'API Python */
-	@Hidden
-	@PostMapping(value = "prompt_builder")
-	public Chat promptBuilder(@RequestBody DemandeSuggestionEmails prompt) {
-		Chat chat = null;
-		try {
-			chat = svcllmService.promptBuilder(prompt);
-		} catch(Exception ex) {
-			LOGGER.error("\n***Erreur dans la recupération des prompts a partir de l'API Python  : {} \n", ex.getMessage());
-		}
- 		return chat ;
-	}
+        assertTrue(response.contains("Exception"));
+    }
 
+    @Test
+    void testPromptBuilder() {
+        DemandeSuggestionEmails prompt = new DemandeSuggestionEmails();
+        Chat expectedChat = new Chat();
+        when(svcllmService.promptBuilder(prompt)).thenReturn(expectedChat);
+
+        Chat response = controller.promptBuilder(prompt);
+
+        assertEquals(expectedChat, response);
+        verify(svcllmService).promptBuilder(prompt);
+    }
+
+    @Test
+    void testPromptBuilderException() {
+        DemandeSuggestionEmails prompt = new DemandeSuggestionEmails();
+        when(svcllmService.promptBuilder(prompt)).thenThrow(new RuntimeException("Prompt error"));
+
+        Chat response = controller.promptBuilder(prompt);
+
+        assertNull(response);
+    }
 }
