@@ -1,103 +1,27 @@
-package fr.ca.cats.p1354.s3601.svcllm.service.impl;
+@Test
+void testStartKafkaWithRecords() {
+    // Create mock records
+    DemandeSuggestionKey mockKey = mock(DemandeSuggestionKey.class);
+    DemandeSuggestionValue mockValue = mock(DemandeSuggestionValue.class);
 
-import static org.mockito.Mockito.*;
-import static org.junit.jupiter.api.Assertions.*;
+    ConsumerRecords<DemandeSuggestionKey, DemandeSuggestionValue> mockRecords = new ConsumerRecords<>(
+        Map.of(new TopicPartition("test-topic", 0),
+            List.of(new ConsumerRecord<>("test-topic", 0, 0, mockKey, mockValue))
+        )
+    );
 
-import fr.ca.cats.p1354.s3601.svcllm.model.*;
-import fr.ca.cats.p1354.s3601.svcllm.service.*;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
-import org.apache.kafka.clients.consumer.KafkaConsumer;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
-import org.springframework.http.ResponseEntity;
+    // Configure the mocked KafkaConsumer
+    doReturn(kafkaConsumer).when(service).getKafkaConsumer();
+    when(kafkaConsumer.poll(any())).thenReturn(mockRecords);
 
-import java.util.Properties;
+    // Set the consumer to active
+    service.setIsActiveLocal(true);
 
-class ConsumerKafkaServiceImplTest {
+    // Call the method under test
+    assertDoesNotThrow(() -> service.startKafka(service));
 
-    @Mock
-    private ProducerKafkaService producerKafkaService;
-
-    @Mock
-    private LLMAccessService llmAccessService;
-
-    @Mock
-    private SvcllmService svcllmService;
-
-    @Mock
-    private AESUtilService aESUtilService;
-
-    @Mock
-    private KafkaConsumer<DemandeSuggestionKey, DemandeSuggestionValue> kafkaConsumer;
-
-    @InjectMocks
-    private ConsumerKafkaServiceImpl service;
-
-    private Properties mockedProperties;
-
-    @BeforeEach
-    void setUp() {
-        MockitoAnnotations.openMocks(this);
-        mockedProperties = new Properties();
-        mockedProperties.setProperty("key.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
-        mockedProperties.setProperty("value.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
-
-        doReturn(mockedProperties).when(service).createConsumerFromProperties(anyString());
-        doReturn(kafkaConsumer).when(service).getKafkaConsumer();
-    }
-
-    @Test
-    void testInitCreatesKafkaConsumer() {
-        assertDoesNotThrow(() -> service.init());
-        assertNotNull(service.getKafkaConsumer());
-    }
-
-    @Test
-    void testScheduleStopLocal() {
-        service.setIsActiveLocal(true);
-        service.scheduleStopLocal();
-        assertFalse(service.getIsActiveLocal());
-    }
-
-    @Test
-    void testStartCallsScheduleStart() {
-        doNothing().when(service).scheduleStart(any(ConsumerKafkaServiceImpl.class));
-
-        ResponseEntity<String> response = service.start(service);
-
-        assertEquals(200, response.getStatusCodeValue());
-        verify(service, times(1)).scheduleStart(any(ConsumerKafkaServiceImpl.class));
-    }
-
-    @Test
-    void testStartHandlesException() {
-        doThrow(new RuntimeException("Error starting")).when(service).scheduleStart(any(ConsumerKafkaServiceImpl.class));
-
-        ResponseEntity<String> response = service.start(service);
-
-        assertEquals(500, response.getStatusCodeValue());
-        assertTrue(response.getBody().contains("KO"));
-    }
-
-    @Test
-    void testStartKafkaWithNoRecords() {
-        when(kafkaConsumer.poll(any())).thenReturn(ConsumerRecords.empty());
-
-        service.setIsActiveLocal(true);
-
-        assertDoesNotThrow(() -> service.startKafka(service));
-        verify(kafkaConsumer, atLeastOnce()).poll(any());
-    }
-
-    @Test
-    void testStartKafkaHandlesException() {
-        when(kafkaConsumer.poll(any())).thenThrow(new RuntimeException("Polling error"));
-
-        service.setIsActiveLocal(true);
-
-        assertDoesNotThrow(() -> service.startKafka(service));
-    }
+    // Verify interactions
+    verify(kafkaConsumer, atLeastOnce()).poll(any());
+    verify(kafkaConsumer, atLeastOnce()).commitSync();
+    verify(kafkaConsumer, atLeastOnce()).close();
 }
