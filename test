@@ -1,38 +1,289 @@
-Voici une version corrigée et mieux structurée de votre message :
+package fr.ca.cats.p1354.s3601.svcllm.service.impl;
 
----
+import fr.ca.cats.p1354.DemandeSuggestionKey;
+import fr.ca.cats.p1354.DemandeSuggestionValue;
+import fr.ca.cats.p1354.customer_info;
+import fr.ca.cats.p1354.s3601.svcllm.model.*;
+import fr.ca.cats.p1354.s3601.svcllm.service.*;
+import fr.ca.cats.p1354.s3601.svcllm.utils.KafkaPropertiesLoader;
+import fr.ca.cats.p1354.user_info;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.clients.consumer.ConsumerRebalanceListener;
+import java.time.Duration;
+import java.util.Collection;
+import fr.ca.cats.p0070.s1889.logging.service.Logger;
+import fr.ca.cats.p0070.s1889.logging.service.LoggerService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Service;
+import io.confluent.kafka.serializers.KafkaAvroDeserializerConfig;
+import jakarta.annotation.PostConstruct;
+import org.springframework.web.client.RestTemplate;
+import java.util.Collections;
+import java.util.Properties;
+import java.util.concurrent.atomic.AtomicBoolean;
 
-**Bonjour,**
 
-J'espère que tu vas bien.
+@Service
+public class ConsumerKafkaServiceImpl implements ConsumerKafkaService {
+    private static final Logger LOGGER = LoggerService.getLogger(ConsumerKafkaServiceImpl.class);
 
-Je te partage un récapitulatif des travaux que j'ai réalisés dans le cadre du ticket de refactorisation des codes Java :
+    private KafkaConsumer<?,?> consumer = null;
 
-### Travaux réalisés :
-1. **Pour ress-sugg :**
-   - J'ai refactorisé la méthode de récupération des demandes de suggestion.
-   - J'ai également amélioré les logs.
+    private static AtomicBoolean isActive = new AtomicBoolean(true);
 
-2. **Pour ress-svcllm :**
-   - J'ai travaillé sur la refactorisation des codes Java, notamment en restructurant le contrôleur pour séparer la logique métier.
-   - J'ai créé des interfaces pour chaque classe afin d'appliquer les bonnes pratiques d'injection de dépendances.
-   - J'ai commencé à travailler sur les tests unitaires.
+    private AtomicBoolean isActiveLocal;
 
-### Restant à faire :
-1. Finaliser les tests unitaires pour **ress-svcllm**.
-2. Écrire les tests unitaires pour **ress-sugg**.
-3. Améliorer les logs pour **ress-svcllm**.
+    ProducerKafkaService producerKafkaService;
 
-### Remarque :
-Concernant le point sur **"Intégrer la parallélisation avec @Async('taskExecutor')"**, je propose de l'inclure dans un ticket spécifique de refactorisation des codes Kafka.
+    DemandeSuggestionValue suggestionValue = null;
 
----
+    LLMAccessService llmAccessService;
 
-N'hésite pas à me faire part de tes retours !
+    private final RestTemplate restTemplate = new RestTemplate();
 
-**Bonne journée,**  
-[Votre prénom]  
+    @Value("${topic}")
+    protected String topic;
 
----
+    @Value("${consumer.kafkaUser}")
+    protected String kafkaUser;
 
-Cette version est plus claire et bien structurée, ce qui facilite la compréhension.
+    @Value("${consumer.kafkaPassword}")
+    protected String kafkaPassword;
+
+    @Value("${bootstrap.servers}")
+    protected String bootstrapServers;
+
+    @Value("${schema.registry.url}")
+    protected String schemaRegistryUrl;
+
+    @Value("${consumer.group.id}")
+    protected String consumerGroupId;
+
+	@Value("${POLL_DURATION_MS}")
+	protected String pollDurationMS ;
+
+    @Value("${properties.kafka.path}")
+    protected String propertiesKafka;
+
+    @Value("${MAX_POLL_RECORDS_CONFIG}")
+	protected String MAX_POLL_RECORDS_CONFIG ;
+
+    @Value("${MAX_POLL_INTERVAL_MS_CONFIG}")
+    protected String MAX_POLL_INTERVAL_MS_CONFIG;
+
+    @Value("${url.sauvegarde_suggestion}")
+    String sauvegarde_suggestion ;
+
+    SvcllmService svcllmService ;
+
+    AESUtilService aESUtilService;
+
+    @Autowired
+	public ConsumerKafkaServiceImpl(ProducerKafkaService producerKafkaService, LLMAccessService llmAccessService, SvcllmService svcllmService, AESUtilService aESUtilService) {
+		this.producerKafkaService = producerKafkaService;
+        this.isActiveLocal = new AtomicBoolean(true);
+        this.llmAccessService = llmAccessService;
+        this.svcllmService = svcllmService;
+        this.aESUtilService = aESUtilService;
+	}
+
+	@PostConstruct
+    public void init() {
+        synchronized(this){
+            setPropertiesKafka(propertiesKafka);
+            if(null == consumer){
+                consumer = createConsumerFromProperties(propertiesKafka);
+            }
+            consumer.subscribe(Collections.singleton(topic), new ConsumerRebalanceListener() {
+                @Override
+                public void onPartitionsRevoked(Collection<TopicPartition> partitions) {
+                    System.out.println("Partitions revoked, committing current offsets");
+                    consumer.commitSync();
+                    LOGGER.info("\nPartitions revoked, current offset has been committed\n");
+                }
+                @Override
+                public void onPartitionsAssigned(Collection<TopicPartition> partitions) {
+                    LOGGER.info("\nPartitions (re)assigned: \n"+partitions.toString());
+                }
+            });
+            // Changing state takes place into invoker function.
+            isActiveLocal.set(true);
+            LOGGER.info("\n***init(): Souscription au topic OK; state= "+isActiveLocal.get()+"\n");
+        }
+	}
+
+    public synchronized void setPropertiesKafka(String propertiesKafka) {
+        this.propertiesKafka = propertiesKafka;
+    }
+    protected KafkaConsumer<?,?> createConsumerFromProperties(String propertiesKafkaPath){
+        Properties properties = KafkaPropertiesLoader.loadKafkaProperties(propertiesKafkaPath);
+
+        properties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, properties.getProperty("value.deserializer"));
+        properties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, properties.getProperty("key.deserializer"));
+        properties.put(KafkaAvroDeserializerConfig.SPECIFIC_AVRO_READER_CONFIG, "true");
+        properties.put("schema.registry.basic.auth.user.info", String.join(":",kafkaUser, kafkaPassword));
+        properties.put("sasl.jaas.config", "org.apache.kafka.common.security.plain.PlainLoginModule required username=\""+kafkaUser+"\" password=\""+kafkaPassword+"\";");
+        properties.put("bootstrap.servers", bootstrapServers);
+        properties.put("schema.registry.url", schemaRegistryUrl);
+        properties.put("group.id", consumerGroupId);
+        properties.put(org.apache.kafka.clients.consumer.ConsumerConfig.MAX_POLL_INTERVAL_MS_CONFIG, Integer.parseInt(MAX_POLL_INTERVAL_MS_CONFIG));
+        properties.put(org.apache.kafka.clients.consumer.ConsumerConfig.MAX_POLL_RECORDS_CONFIG, Integer.parseInt(MAX_POLL_RECORDS_CONFIG)); // Default: 500
+        this.consumer = new KafkaConsumer<>(properties) ;
+        return consumer;
+    }
+
+    public synchronized KafkaConsumer<?,?> getKafkaConsumer() {
+        return consumer;
+	}
+
+	public void scheduleStopLocal() {
+        synchronized(isActiveLocal){
+            isActiveLocal.set(false);
+        }
+    }
+
+	public boolean getIsActiveLocal() {
+		return this.isActiveLocal.get();
+	}
+
+	public void setIsActiveLocal(boolean stateActivity) {
+        if (null == this.isActiveLocal){
+            this.isActiveLocal = new AtomicBoolean(stateActivity);
+        } else {
+            this.isActiveLocal.set(stateActivity);
+        }
+	}
+
+    public void startKafka() {
+        try {
+            while (getIsActiveLocal()) {
+                try{
+                    synchronized(consumer){
+                        final ConsumerRecords<DemandeSuggestionKey, DemandeSuggestionValue> consumerRecords = (ConsumerRecords<DemandeSuggestionKey, DemandeSuggestionValue>) consumer.poll(Duration.ofMillis(Integer.parseInt(pollDurationMS)));
+                        consumerRecords.forEach(consumerRecord -> {
+                            /** 0- Verification de l'expiration du token */
+                            LOGGER.info("\n ***INFO: Vérification du token X-Connect\n");
+                            /** 1- Consommer les données emises dans le topic mail */
+                            suggestionValue = consumerRecord.value();
+                            startKafkaCore();
+                            /** commit sync pour s'assurer de l'emplacement des offset*/
+                            consumer.commitSync();
+                        } );
+                    }
+                } catch (Exception exception){
+                    LOGGER.error("\nException raised from Kafka thread= \n"+exception.getMessage());
+                    synchronized(consumer){
+                        consumer.commitSync();
+                    }
+                }
+            }
+        } finally {
+            /** close explicite déclenche un rebalance si besoin au niveau kafka */
+            if (getIsActiveLocal()){
+                /*State is still active; exception occured */
+                setIsActiveLocal(false);
+                LOGGER.info("\nException raised from Controller thread --> leaving Kafka thread \n");
+            }else{
+                LOGGER.info("\n*** startKafka(): Controller thread halted \n");
+            }
+            if (null != consumer){
+                synchronized(consumer){
+                    consumer.close();
+                    LOGGER.info("\n***{ \"Kafka\" : \"closed \" }");
+                }
+            }else{
+                LOGGER.info("\n*** startKafka: kafkaConsumer is null; ");
+            }
+        }
+    }
+
+    public void startKafkaCore() {
+        /* Flag dont la valeur est mise a true si le chemin nominal est couvert. */
+        LOGGER.info("\n*** startKafkaCore() :  isActive= " + getIsActiveLocal()+"\n");
+        String mail_id = suggestionValue.getMailId().toString();
+        LOGGER.info("\n*** startKafkaCore() : mail_id= "+mail_id+"\n");
+        /** 2- Déchiffrement des données du mail body */
+        customer_info customer_info_avro = (customer_info) suggestionValue.getCustomerInfo();
+        user_info user_info_avro  = (user_info) suggestionValue.getUserInfo() ;
+        DemandeSuggestionEmail email = svcllmService.decryptedDemandeSuggestionEmails(suggestionValue, customer_info_avro, user_info_avro) ;
+        /**  3- Récupérer les prompts depuis l'api python */
+        String suggestedResponse = null;
+
+        Chat chatRequest = svcllmService.promptBuilder(email) ;
+        ChatRequest request = new ChatRequest(chatRequest.getPre_prompt(), chatRequest.getChatHistory(), chatRequest.getInputParameters(), chatRequest.getOutputParameters());
+
+        /**  4- Envoyer le prompt au LLM et recuperation de la reponse dans chatResponse */
+        ChatResponse chatResponse = llmAccessService.sendToLLM(request, chatRequest.getEndpoint_llm());
+        if(chatResponse != null) {
+            LOGGER.info("\n***INFO: startKafkaCore : Got suggested response from AWS for mail_id=" + mail_id +"\n");
+            suggestedResponse = chatResponse.getText() ;
+
+            /** 5- Chiffrement de la suggestion de réponse */
+            String encryptedSuggestedResponse = aESUtilService.encrypt(suggestedResponse);
+            chatResponse.setText(encryptedSuggestedResponse);
+
+            /** 6- Chiffrement du pre_prompt */
+            String encryptedPre_prompt = aESUtilService.encrypt(chatRequest.getPre_prompt());
+            request.setPre_prompt(encryptedPre_prompt);
+
+            /** 7- Restitution de la suggestion de reponse encryptée au POD RESSUGG */
+            SuggestionReponse suggestionReponse = svcllmService.sendSuggestionToRedis(suggestionValue, restTemplate, sauvegarde_suggestion, encryptedSuggestedResponse);
+            if(suggestionReponse != null) {
+                LOGGER.info("\n***INFO: startKafkaCore(): demande de suggestion encryptée transmise au POD RESSUGG ! mail_id= "+mail_id +"\n");
+                producerKafkaService.send(suggestionReponse, suggestionValue, customer_info_avro , user_info_avro, request, chatResponse);
+                LOGGER.info("\n***INFO: startKafkaCore(): demande de suggestion encryptée produite dans Kafka prediction. ! mail_id= " + mail_id +"\n");
+            } else {
+                LOGGER.error("\n***ERROR de l'envoi de suggestion de reponse au resssugg pour  le mail_id = " + mail_id +  "\n");
+            }
+        } else {
+            LOGGER.error("\n ERROR: accès LLM via l'API Gateway; mail_id= " + mail_id +  "\n");
+        }
+    }
+
+    public ResponseEntity <String> start() {
+        String messageStatus = null;
+        ResponseEntity responseEntity = null;
+        try {
+            scheduleStart();
+            messageStatus = "\n***{ \"action start\" : \"ok\" }";
+            LOGGER.info(messageStatus);
+            responseEntity = ResponseEntity.ok(messageStatus);
+        } catch (Exception e) {
+            messageStatus = "\n***{ \"action start\" : \"KO\" , \"Exception\" : "+e.getMessage()+"}";
+            responseEntity = ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(messageStatus);
+            LOGGER.error(messageStatus);
+        }
+        return responseEntity;
+    }
+
+    public void scheduleStart() {
+        try {
+            if (!getIsActiveLocal()) {
+                //LOGGER.info("Statut consumer inside if : {} \n", ConsumerKafkaServiceImpl.getIsActive().get());
+                init();
+                //Change thread state to activated
+                setIsActiveLocal(true);
+                LOGGER.info("\n*** scheduleStart: after ConsumerKafkaServiceImpl intialization; thread state= {} \n", getIsActiveLocal());
+            }
+            startKafka();
+            // Leaving thread
+            setIsActiveLocal(false);
+            LOGGER.info("\n*** scheduleStart: thread ending...\n");
+            try{
+                //svcllmControllerThread.interrupt(); //important à traiter dans le ticket de refacorting kafka
+                LOGGER.info("\n*** scheduleStart() : thread interrupted!");
+            } catch(Exception exception) {
+                LOGGER.error("\n*** ERROR scheduleStart(): Exception= "+exception.getMessage()+"\n");
+            }
+        } catch(Exception exception) {
+            LOGGER.error("\n*** ERROR scheduleStart(): start failed; Exception= {} \n", exception.getMessage());
+        }
+    }
+
+}
