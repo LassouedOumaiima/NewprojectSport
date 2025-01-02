@@ -1,88 +1,51 @@
 package fr.ca.cats.p1354.s3601.svcllm.service.impl;
 
+import fr.ca.cats.p1354.s3601.svcllm.service.AESUtilService;
 import fr.ca.cats.p1354.s3601.svcllm.service.CipherAESGCMService;
-import jakarta.annotation.PostConstruct;
 import fr.ca.cats.p0070.s1889.logging.service.Logger;
 import fr.ca.cats.p0070.s1889.logging.service.LoggerService;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import javax.crypto.Cipher;
-import javax.crypto.SecretKey;
-import javax.crypto.spec.GCMParameterSpec;
-import javax.crypto.spec.SecretKeySpec;
-import java.nio.charset.StandardCharsets;
-import java.security.SecureRandom;
-import java.util.Base64;
 
 /**
- * Classe de Service de gestion des algorithmes de cryptage
+ * Classe de service de cryptage pour l'algorithme AES.
  */
 @Service
-public class CipherAESGCMServiceImpl implements CipherAESGCMService{
+public class AESUtilServiceImpl implements AESUtilService {
+    private static final Logger LOGGER = LoggerService.getLogger(AESUtilServiceImpl.class);
 
-    @Value("${secretkey}")
-    String secretkey ;
+    CipherAESGCMService cipherAESGCMService ;
 
-    private static final Logger LOGGER = LoggerService.getLogger(CipherAESGCMServiceImpl.class);
-    private static final String ALGORITHM = "AES/GCM/NoPadding";
-    private static final int IV_SIZE  = 12; // 96 bits
-    private static final int TAG_SIZE = 128; // 128 bits
-    private static SecretKey key = null;
-    private static SecureRandom secureRandom = null;
-    private static Cipher cipher = null;
+    @Autowired
+    public AESUtilServiceImpl(CipherAESGCMService cipherAESGCMService) {
+        this.cipherAESGCMService = cipherAESGCMService;
+    }
 
-    @PostConstruct
-    public void init() {
+    /**
+     * Initialise un cipher et retourne la chaîne de caractère décryptée par le cipher
+     * @param text Chaîne de caractères cryptée
+     * @return Chaîne de caractères décryptée
+     */
+    public String decrypt(String text) {
         try {
-            if (this.secretkey.getBytes().length != 32) {
-                throw new IllegalArgumentException("Key must be 256 bits (32 bytes)");
-            }
-            key =new SecretKeySpec(this.secretkey.getBytes(), "AES");
-            secureRandom = new SecureRandom();
-            cipher = Cipher.getInstance(ALGORITHM);
+            return cipherAESGCMService.decrypt(text);
         } catch (Exception e) {
-            LOGGER.error("Error while initializing CipherAESGCMService", e);
+            LOGGER.error("Error from AESUtil cannot decrypt the text", e);
+            return "Decryption failed: " + e.getMessage();
         }
     }
 
     /**
-     * Crypte une chaine de caractère en appliquant un algorithme
+     * Initialise un cipher et retourne la chaîne de caractère encryptée par le cipher
      * @param text Chaîne de caractères non cryptée
      * @return Chaîne de caractères cryptée
      */
-    public String encrypt(String text) throws Exception {
-        byte[] iv = new byte[IV_SIZE];
-        secureRandom.nextBytes(iv);
-
-        GCMParameterSpec gcmParameterSpec = new GCMParameterSpec(TAG_SIZE, iv);
-        cipher.init(Cipher.ENCRYPT_MODE, key, gcmParameterSpec);
-
-        byte[] ciphertext = cipher.doFinal(text.getBytes(StandardCharsets.UTF_8));
-        byte[] encrypted = new byte[IV_SIZE + ciphertext.length];
-        System.arraycopy(iv, 0, encrypted, 0, IV_SIZE);
-        System.arraycopy(ciphertext, 0, encrypted, IV_SIZE, ciphertext.length);
-
-        return Base64.getEncoder().encodeToString(encrypted);
-    }
-
-    /**
-     * Décrypte une chaine de caractère en appliquant un algorithme
-     * @param text Chaîne de caractères cryptée
-     * @return Chaîne de caractères décryptée
-     */
-    public String decrypt(String text) throws Exception {
-        byte[] decodedCiphertext = Base64.getDecoder().decode(text);
-        byte[] iv = new byte[IV_SIZE];
-
-        System.arraycopy(decodedCiphertext, 0, iv, 0, IV_SIZE); // Extraire l'IV
-        byte[] actualCiphertext = new byte[decodedCiphertext.length - IV_SIZE];
-        System.arraycopy(decodedCiphertext, IV_SIZE, actualCiphertext, 0, actualCiphertext.length);
-
-        GCMParameterSpec gcmParameterSpec = new GCMParameterSpec(TAG_SIZE, iv);
-        cipher.init(Cipher.DECRYPT_MODE, key, gcmParameterSpec);
-        byte[] plaintext = cipher.doFinal(actualCiphertext);
-
-        return new String(plaintext, StandardCharsets.UTF_8);
-
+    public String encrypt(String text) {
+        try {
+            return cipherAESGCMService.encrypt(text);
+        } catch (Exception e) {
+            LOGGER.error("Error from AESUtil cannot encrypt the text", e);
+            return "Encryption failed: " + e.getMessage();
+        }
     }
 }
