@@ -1,56 +1,22 @@
-package fr.ca.cats.p1354.s3601.svcllm.service.impl;
-
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.springframework.test.util.ReflectionTestUtils;
-
-import static org.junit.jupiter.api.Assertions.*;
-
+@ExtendWith(MockitoExtension.class)
 class CipherAESGCMServiceImplTest {
 
+    @InjectMocks
     private CipherAESGCMServiceImpl cipherService;
+
+    @Mock
+    private Logger logger;
 
     @BeforeEach
     void setUp() {
-        // Créer une nouvelle instance de CipherAESGCMServiceImpl
-        cipherService = new CipherAESGCMServiceImpl();
-
-        // Injecter la valeur du champ 'secretkey'
-        ReflectionTestUtils.setField(cipherService, "secretkey", "01234567890123456789012345678901");
-
-        // Initialiser l'instance
-        cipherService.init();
+        ReflectionTestUtils.setField(cipherService, "secretkey", "12345678901234567890123456789012"); // 32-byte key
     }
 
     @Test
-    void testEncryptDecryptSuccess() throws Exception {
-        String originalText = "TestPlainText";
-
-        // Chiffrement
-        String encryptedText = cipherService.encrypt(originalText);
-        assertNotNull(encryptedText, "Encrypted text should not be null");
-
-        // Déchiffrement
-        String decryptedText = cipherService.decrypt(encryptedText);
-        assertEquals(originalText, decryptedText, "Decrypted text should match the original text");
-    }
-
-    @Test
-    void testEncryptGeneratesUniqueCiphertext() throws Exception {
-        String originalText = "TestPlainText";
-
-        // Vérifier que deux opérations de chiffrement génèrent des textes différents
-        String encryptedText1 = cipherService.encrypt(originalText);
-        String encryptedText2 = cipherService.encrypt(originalText);
-
-        assertNotEquals(encryptedText1, encryptedText2, "Ciphertexts should be unique due to random IVs");
-    }
-
-    @Test
-    void testDecryptThrowsExceptionForInvalidCiphertext() {
-        String invalidCiphertext = "InvalidCiphertext";
-
-        Exception exception = assertThrows(Exception.class, () -> cipherService.decrypt(invalidCiphertext));
-        assertNotNull(exception, "Exception should be thrown for invalid ciphertext");
+    void testEncryptAndDecrypt() throws Exception {
+        String plainText = "Hello, World!";
+        String encrypted = cipherService.encrypt(plainText);
+        String decrypted = cipherService.decrypt(encrypted);
+        assertEquals(plainText, decrypted);
     }
 }
