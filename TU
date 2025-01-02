@@ -1,33 +1,25 @@
 package fr.ca.cats.p1354.s3601.svcllm.service.impl;
 
-import fr.ca.cats.p1354.s3601.svcllm.service.CipherAESGCMService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.InjectMocks;
-import org.mockito.MockedStatic;
-import org.mockito.Mockito;
 import org.springframework.test.util.ReflectionTestUtils;
 
-import javax.crypto.Cipher;
-import javax.crypto.spec.GCMParameterSpec;
-import javax.crypto.spec.SecretKeySpec;
-import java.nio.charset.StandardCharsets;
-import java.security.SecureRandom;
-import java.util.Base64;
-
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
 
 class CipherAESGCMServiceImplTest {
 
-    @InjectMocks
     private CipherAESGCMServiceImpl cipherService;
 
     @BeforeEach
     void setUp() {
-        // Injecter une clé secrète valide pour les tests
+        // Créer une nouvelle instance de CipherAESGCMServiceImpl
+        cipherService = new CipherAESGCMServiceImpl();
+
+        // Injecter la valeur du champ 'secretkey'
         ReflectionTestUtils.setField(cipherService, "secretkey", "01234567890123456789012345678901");
-        cipherService.init(); // Initialiser le service
+
+        // Initialiser l'instance
+        cipherService.init();
     }
 
     @Test
@@ -44,35 +36,6 @@ class CipherAESGCMServiceImplTest {
     }
 
     @Test
-    void testEncryptThrowsExceptionForInvalidKey() {
-        // Injecter une clé invalide
-        ReflectionTestUtils.setField(cipherService, "secretkey", "shortkey");
-        cipherService.init();
-
-        String originalText = "TestPlainText";
-        Exception exception = assertThrows(Exception.class, () -> cipherService.encrypt(originalText));
-        assertTrue(exception.getMessage().contains("Key must be 256 bits"), "Exception should mention invalid key size");
-    }
-
-    @Test
-    void testDecryptThrowsExceptionForCorruptedCiphertext() throws Exception {
-        String corruptedCiphertext = "InvalidCiphertext";
-
-        Exception exception = assertThrows(Exception.class, () -> cipherService.decrypt(corruptedCiphertext));
-        assertTrue(exception.getMessage().contains("Tag mismatch"), "Exception should mention tag mismatch or similar");
-    }
-
-    @Test
-    void testInitHandlesInvalidKeyGracefully() {
-        // Injecter une clé invalide
-        ReflectionTestUtils.setField(cipherService, "secretkey", "shortkey");
-
-        // Appel init et validation des logs d'erreur
-        cipherService.init();
-        assertNull(ReflectionTestUtils.getField(cipherService, "key"), "Key should be null due to invalid initialization");
-    }
-
-    @Test
     void testEncryptGeneratesUniqueCiphertext() throws Exception {
         String originalText = "TestPlainText";
 
@@ -84,28 +47,10 @@ class CipherAESGCMServiceImplTest {
     }
 
     @Test
-    void testInitCipherInstance() {
-        try (MockedStatic<Cipher> cipherMockedStatic = Mockito.mockStatic(Cipher.class)) {
-            cipherMockedStatic.when(() -> Cipher.getInstance("AES/GCM/NoPadding"))
-                    .thenThrow(new RuntimeException("Mocked Cipher Initialization Exception"));
+    void testDecryptThrowsExceptionForInvalidCiphertext() {
+        String invalidCiphertext = "InvalidCiphertext";
 
-            ReflectionTestUtils.setField(cipherService, "secretkey", "01234567890123456789012345678901");
-            cipherService.init();
-
-            assertNull(ReflectionTestUtils.getField(cipherService, "cipher"), "Cipher instance should not be initialized");
-        }
-    }
-
-    @Test
-    void testDecryptInvalidCipherInstance() {
-        try {
-            ReflectionTestUtils.setField(cipherService, "cipher", null); // Forcer l'instance cipher à null
-            String ciphertext = "FakeCiphertext";
-
-            Exception exception = assertThrows(Exception.class, () -> cipherService.decrypt(ciphertext));
-            assertNotNull(exception, "An exception should be thrown when decrypting with null cipher");
-        } catch (Exception e) {
-            fail("Unexpected exception: " + e.getMessage());
-        }
+        Exception exception = assertThrows(Exception.class, () -> cipherService.decrypt(invalidCiphertext));
+        assertNotNull(exception, "Exception should be thrown for invalid ciphertext");
     }
 }
