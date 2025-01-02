@@ -1,0 +1,128 @@
+package fr.ca.cats.p1354.s3601.svcllm.service.impl;
+
+import static org.mockito.Mockito.*;
+import static org.junit.jupiter.api.Assertions.*;
+
+import fr.ca.cats.p1354.DemandeSuggestionKey;
+import fr.ca.cats.p1354.DemandeSuggestionValue;
+import fr.ca.cats.p1354.s3601.svcllm.model.*;
+import fr.ca.cats.p1354.s3601.svcllm.service.*;
+import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.MockitoAnnotations;
+import org.springframework.http.ResponseEntity;
+
+import java.util.Properties;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+class ConsumerKafkaServiceImplTest {
+
+    @Mock
+    private ProducerKafkaService producerKafkaService;
+
+    @Mock
+    private LLMAccessService llmAccessService;
+
+    @Mock
+    private SvcllmService svcllmService;
+
+    @Mock
+    private AESUtilService aESUtilService;
+
+    @Mock
+    private KafkaConsumer<DemandeSuggestionKey, DemandeSuggestionValue> kafkaConsumer;
+
+    @InjectMocks
+    private ConsumerKafkaServiceImpl service;
+
+    @BeforeEach
+    void setUp() {
+        MockitoAnnotations.openMocks(this);
+        doReturn(kafkaConsumer).when(service).getKafkaConsumer();
+    }
+
+    /**
+     * Test to ensure the consumer is initialized properly
+     */
+    @Test
+    void testInit() {
+        assertDoesNotThrow(() -> service.init());
+        assertNotNull(service.getKafkaConsumer());
+    }
+
+    /**
+     * Test to verify that scheduleStopLocal sets the isActiveLocal flag to false
+     */
+    @Test
+    void testScheduleStopLocal() {
+        service.setIsActiveLocal(true);
+        service.scheduleStopLocal();
+        assertFalse(service.getIsActiveLocal());
+    }
+
+    /**
+     * Test to verify proper handling when starting the Kafka service
+     */
+    @Test
+    void testStartKafka() {
+        when(kafkaConsumer.poll(any())).thenReturn(ConsumerRecords.empty());
+
+        service.setIsActiveLocal(true);
+        assertDoesNotThrow(() -> service.startKafka());
+        verify(kafkaConsumer, atLeastOnce()).poll(any());
+        verify(kafkaConsumer, atLeastOnce()).commitSync();
+    }
+
+    /**
+     * Test to handle cases when an exception is thrown in Kafka polling
+     */
+    @Test
+    void testStartKafkaHandlesException() {
+        when(kafkaConsumer.poll(any())).thenThrow(new RuntimeException("Polling error"));
+
+        service.setIsActiveLocal(true);
+        assertDoesNotThrow(() -> service.startKafka());
+    }
+
+    /**
+     * Test to ensure the scheduleStart initializes and starts the consumer
+     */
+    @Test
+    void testScheduleStart() {
+        doNothing().when(service).init();
+        service.setIsActiveLocal(false);
+
+        assertDoesNotThrow(() -> service.scheduleStart());
+        assertTrue(service.getIsActiveLocal());
+    }
+
+    /**
+     * Test to verify the start method returns the correct ResponseEntity
+     */
+    @Test
+    void testStartSuccess() {
+        doNothing().when(service).scheduleStart();
+
+        ResponseEntity<String> response = service.start();
+
+        assertEquals(200, response.getStatusCodeValue());
+        assertTrue(response.getBody().contains("ok"));
+    }
+
+    /**
+     * Test to handle exceptions during the start process
+     */
+    @Test
+    void testStartHandlesException() {
+        doThrow(new RuntimeException("Start error")).when(service).scheduleStart();
+
+        ResponseEntity<String> response = service.start();
+
+        assertEquals(500, response.getStatusCodeValue());
+        assertTrue(response.getBody().contains("KO"));
+    }
+}
