@@ -4,9 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import fr.ca.cats.p1354.s3601.svcllm.model.AUT9Response;
 import fr.ca.cats.p1354.s3601.svcllm.model.ChatRequest;
 import fr.ca.cats.p1354.s3601.svcllm.model.ChatResponse;
-import fr.ca.cats.p1354.s3601.svcllm.service.AUT9TokenService;
-import fr.ca.cats.p1354.s3601.svcllm.service.LLMAccessService;
 import fr.ca.cats.p1354.s3601.svcllm.model.CredentialProxy;
+import fr.ca.cats.p1354.s3601.svcllm.service.AUT9TokenService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.*;
@@ -42,7 +41,7 @@ class LLMAccessServiceImplTest {
         when(credentialProxy.getPassword()).thenReturn("proxyPass".toCharArray());
 
         llmAccessService = new LLMAccessServiceImpl(credentialProxy, aut9TokenService);
-        llmAccessService.restTemplateProxy = restTemplateProxy; // Injecting mocked RestTemplate
+        llmAccessService.restTemplateProxy = restTemplateProxy; // Inject mock RestTemplate
     }
 
     @Test
@@ -76,7 +75,7 @@ class LLMAccessServiceImplTest {
     }
 
     @Test
-    void testSendToLLMWithTokenFailure() {
+    void testSendToLLMTokenFailure() {
         // Préparation
         ChatRequest chatRequest = new ChatRequest();
         chatRequest.setInput("Test input");
