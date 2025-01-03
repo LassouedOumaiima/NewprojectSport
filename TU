@@ -1,22 +1,115 @@
-@ExtendWith(MockitoExtension.class)
-class CipherAESGCMServiceImplTest {
+package fr.ca.cats.p1354.s3601.svcllm.service.impl;
 
-    @InjectMocks
-    private CipherAESGCMServiceImpl cipherService;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import fr.ca.cats.p1354.s3601.svcllm.model.AUT9Response;
+import fr.ca.cats.p1354.s3601.svcllm.model.ChatRequest;
+import fr.ca.cats.p1354.s3601.svcllm.model.ChatResponse;
+import fr.ca.cats.p1354.s3601.svcllm.service.AUT9TokenService;
+import fr.ca.cats.p1354.s3601.svcllm.service.LLMAccessService;
+import fr.ca.cats.p1354.s3601.svcllm.model.CredentialProxy;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mockito.*;
+import org.springframework.http.*;
+import org.springframework.web.client.RestTemplate;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+
+class LLMAccessServiceImplTest {
 
     @Mock
-    private Logger logger;
+    private AUT9TokenService aut9TokenService;
+
+    @Mock
+    private RestTemplate restTemplateProxy;
+
+    @Mock
+    private CredentialProxy credentialProxy;
+
+    @InjectMocks
+    private LLMAccessServiceImpl llmAccessService;
+
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @BeforeEach
     void setUp() {
-        ReflectionTestUtils.setField(cipherService, "secretkey", "12345678901234567890123456789012"); // 32-byte key
+        MockitoAnnotations.openMocks(this);
+
+        when(credentialProxy.getHostname()).thenReturn("proxyHost");
+        when(credentialProxy.getPort()).thenReturn(8080);
+        when(credentialProxy.getUsername()).thenReturn("proxyUser");
+        when(credentialProxy.getPassword()).thenReturn("proxyPass".toCharArray());
+
+        llmAccessService = new LLMAccessServiceImpl(credentialProxy, aut9TokenService);
+        llmAccessService.restTemplateProxy = restTemplateProxy; // Injecting mocked RestTemplate
     }
 
     @Test
-    void testEncryptAndDecrypt() throws Exception {
-        String plainText = "Hello, World!";
-        String encrypted = cipherService.encrypt(plainText);
-        String decrypted = cipherService.decrypt(encrypted);
-        assertEquals(plainText, decrypted);
+    void testSendToLLMSuccess() throws Exception {
+        // Préparation
+        ChatRequest chatRequest = new ChatRequest();
+        chatRequest.setInput("Test input");
+
+        ChatResponse expectedChatResponse = new ChatResponse();
+        expectedChatResponse.setText("Test response");
+
+        AUT9Response mockAut9Response = new AUT9Response();
+        mockAut9Response.setEncryptedAccessToken("mockToken");
+
+        when(aut9TokenService.checkAUT9Token(any())).thenReturn(mockAut9Response);
+
+        String mockResponseBody = objectMapper.writeValueAsString(expectedChatResponse);
+        ResponseEntity<String> mockResponseEntity = new ResponseEntity<>(mockResponseBody, HttpStatus.OK);
+
+        when(restTemplateProxy.postForEntity(anyString(), any(HttpEntity.class), eq(String.class)))
+                .thenReturn(mockResponseEntity);
+
+        // Action
+        ChatResponse actualResponse = llmAccessService.sendToLLM(chatRequest, "/test-path");
+
+        // Vérifications
+        assertNotNull(actualResponse);
+        assertEquals("Test response", actualResponse.getText());
+        verify(restTemplateProxy, times(1))
+                .postForEntity(anyString(), any(HttpEntity.class), eq(String.class));
+    }
+
+    @Test
+    void testSendToLLMWithTokenFailure() {
+        // Préparation
+        ChatRequest chatRequest = new ChatRequest();
+        chatRequest.setInput("Test input");
+
+        when(aut9TokenService.checkAUT9Token(any())).thenReturn(null);
+
+        // Action
+        ChatResponse actualResponse = llmAccessService.sendToLLM(chatRequest, "/test-path");
+
+        // Vérifications
+        assertNull(actualResponse);
+        verify(restTemplateProxy, never()).postForEntity(anyString(), any(HttpEntity.class), eq(String.class));
+    }
+
+    @Test
+    void testSendToLLMWithException() throws Exception {
+        // Préparation
+        ChatRequest chatRequest = new ChatRequest();
+        chatRequest.setInput("Test input");
+
+        AUT9Response mockAut9Response = new AUT9Response();
+        mockAut9Response.setEncryptedAccessToken("mockToken");
+
+        when(aut9TokenService.checkAUT9Token(any())).thenReturn(mockAut9Response);
+        when(restTemplateProxy.postForEntity(anyString(), any(HttpEntity.class), eq(String.class)))
+                .thenThrow(new RuntimeException("Simulated exception"));
+
+        // Action
+        ChatResponse actualResponse = llmAccessService.sendToLLM(chatRequest, "/test-path");
+
+        // Vérifications
+        assertNull(actualResponse);
+        verify(restTemplateProxy, times(1))
+                .postForEntity(anyString(), any(HttpEntity.class), eq(String.class));
     }
 }
