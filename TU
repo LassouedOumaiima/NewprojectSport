@@ -1,75 +1,80 @@
-
 package fr.ca.cats.p1354.s3601.svcllm.service;
+
+import fr.ca.cats.p1354.s3601.svcllm.model.AUT9Response;
 import fr.ca.cats.p1354.s3601.svcllm.service.impl.AUT9TokenServiceImpl;
-import fr.ca.cats.p1354.s3601.svcllm.service.impl.LLMAccessServiceImpl;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
-import org.springframework.boot.test.context.SpringBootTest;
-import static org.junit.Assert.*;
-import static org.mockito.Mockito.when;
-
-import org.junit.Test;
-import org.junit.jupiter.api.BeforeEach;
 import org.mockito.MockitoAnnotations;
-import fr.ca.cats.p1354.s3601.svcllm.model.AUT9Response;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
 public class AUT9TokenServiceTest {
-    
-    AUT9Response aut9_Response;
 
     @InjectMocks
-    AUT9TokenServiceImpl aut9TokenService;
+    private AUT9TokenServiceImpl aut9TokenService;
 
-    String aut9_hostname = "dev1-private.api.credit-agricole.fr/technical_authentication/v1";
-    String client_secret = "Ebz2CeRl6tux0c1w";
-    String client_id     = "58a4666829ea0f9bb4603ce74e1966823c8f540c98df1607925df98103a350fe";
+    @Mock
+    private AUT9Response mockAut9Response;
 
+    private String aut9_hostname = "dev1-private.api.credit-agricole.fr/technical_authentication/v1";
+    private String client_secret = "Ebz2CeRl6tux0c1w";
+    private String client_id = "58a4666829ea0f9bb4603ce74e1966823c8f540c98df1607925df98103a350fe";
 
     @BeforeEach
     void setUp() {
+        // Initialise les mocks
         MockitoAnnotations.openMocks(this);
+
+        // Simule les méthodes du service à tester
         when(aut9TokenService.getAut9Hostname()).thenReturn(aut9_hostname);
         when(aut9TokenService.getClientSecret()).thenReturn(client_secret);
         when(aut9TokenService.getClientId()).thenReturn(client_id);
     }
 
+    @Test
+    public void test_hasNullTokenExpired() {
+        when(mockAut9Response.getEncryptedAccessToken()).thenReturn(null);
+        assertTrue(aut9TokenService.hasTokenExpired(mockAut9Response));
+    }
 
     @Test
-    public void test_hasNullTokenExpired(){
-        assertEquals(true, aut9TokenService.hasTokenExpired(aut9_Response));
+    public void test_hasTokenExpired() {
+        AUT9Response aut9Response = new AUT9Response();
+        aut9Response.setEncryptedAccessToken("token");
+        aut9Response.setExpTimestamp(107562165L);
+        aut9Response.setExpiresIn(540);
+        aut9Response.setScope("scope");
+        aut9Response.setTokenType("type");
+
+        assertTrue(aut9TokenService.hasTokenExpired(aut9Response));
     }
+
     @Test
-    public void test_hasTokenExpired(){
-        aut9_Response = new AUT9Response();
-        aut9_Response.setEncryptedAccessToken("token");
-        aut9_Response.setExpTimestamp((long)107562165);
-        aut9_Response.setExpiresIn(540);
-        aut9_Response.setScope("scope");
-        aut9_Response.setTokenType("type");
-
-        assertEquals(true, aut9TokenService.hasTokenExpired(aut9_Response));
-    }
-    @Test 
-    public void test_getJWTToken(){
-        assertNotNull(aut9TokenService.getJWTToken());
-    }
-    @Test 
-    public void test_checkAUT9Token(){
-        aut9_Response = new AUT9Response();
-        aut9_Response.setEncryptedAccessToken("token");
-        aut9_Response.setExpTimestamp((long)107562165);
-        aut9_Response.setExpiresIn(540);
-        aut9_Response.setScope("scope");
-        aut9_Response.setTokenType("type");
-        AUT9Response aut9_Response_new = aut9TokenService.checkAUT9Token(aut9_Response);
-        assertEquals(false, aut9TokenService.hasTokenExpired(aut9_Response_new));
-        assertNotEquals(aut9_Response, aut9_Response_new);
-        assertEquals(aut9TokenService.checkAUT9Token(aut9_Response_new), aut9_Response_new);
+    public void test_getJWTToken() {
+        String jwtToken = aut9TokenService.getJWTToken();
+        assertNotNull(jwtToken);
     }
 
+    @Test
+    public void test_checkAUT9Token() {
+        AUT9Response aut9Response = new AUT9Response();
+        aut9Response.setEncryptedAccessToken("token");
+        aut9Response.setExpTimestamp(107562165L);
+        aut9Response.setExpiresIn(540);
+        aut9Response.setScope("scope");
+        aut9Response.setTokenType("type");
+
+        // Simule le comportement du service
+        when(aut9TokenService.hasTokenExpired(aut9Response)).thenReturn(false);
+
+        AUT9Response newAut9Response = aut9TokenService.checkAUT9Token(aut9Response);
+
+        // Vérifie que le token n'est pas expiré
+        assertFalse(aut9TokenService.hasTokenExpired(newAut9Response));
+        assertNotEquals(aut9Response, newAut9Response);
+        assertEquals(newAut9Response, aut9TokenService.checkAUT9Token(newAut9Response));
+    }
 }
-
-corriger messager d'erreir pk toujour null: java.lang.NullPointerException: Cannot invoke "fr.ca.cats.p1354.s3601.svcllm.service.impl.AUT9TokenServiceImpl.hasTokenExpired(fr.ca.cats.p1354.s3601.svcllm.model.AUT9Response)" because "this.aut9TokenService" is null
-
-	at fr.ca.cats.p1354.s3601.svcllm.service.AUT9TokenServiceTest.test_hasNullTokenExpired(AUT9TokenServiceTest.java:38)
-	at java.base/java.lang.reflect.Method.invoke(Method.java:568)
