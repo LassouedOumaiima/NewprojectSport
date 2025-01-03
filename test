@@ -61,14 +61,15 @@ public class LLMAccessServiceImpl implements LLMAccessService {
     @Value("${proxy.userPassword}")
     char[] password ;
 
+    CredentialProxy credProxy;
+
     @Autowired
     public LLMAccessServiceImpl(CredentialProxy credProxy, AUT9TokenService aut9TokenService){
+        this.credProxy = credProxy;
         this.aut9TokenService = aut9TokenService;
-        this.aut9Response = new AUT9Response();
-        this.restTemplateProxy = buildProxy(credProxy.getHostname(), credProxy.getPort(), credProxy.getUsername(), credProxy.getPassword());
     }
 
-    public RestTemplate buildProxy(String hostname, int port, String username, char[] password) {
+    private RestTemplate buildProxy(String hostname, int port, String username, char[] password) {
         BasicCredentialsProvider credsProvider = new BasicCredentialsProvider();
         credsProvider.setCredentials(
                 new AuthScope(hostname, port),
@@ -96,7 +97,7 @@ public class LLMAccessServiceImpl implements LLMAccessService {
         ChatResponse chatResponse = null;
         StringWriter writer = new StringWriter();
         ObjectMapper mapper = new ObjectMapper();
-
+        aut9Response = new AUT9Response();
         /*Verifier le token et en recuperer un nouveau si necessaire */
         aut9Response = aut9TokenService.checkAUT9Token(aut9Response);
         if (aut9Response != null){
@@ -107,6 +108,7 @@ public class LLMAccessServiceImpl implements LLMAccessService {
                 // Convert everything written to the StringWriter into a String
                 String result = writer.toString();
                 HttpEntity<ChatRequest> entity = new HttpEntity<>(chatRequest,headers);
+                restTemplateProxy = buildProxy(credProxy.getHostname(), credProxy.getPort(), credProxy.getUsername(), credProxy.getPassword());
                 ResponseEntity<String> response = this.restTemplateProxy.postForEntity(endpointLlm + llmPath, entity, String.class) ;
                 chatResponse = mapper.readValue(response.getBody(), ChatResponse.class);
                 chatResponse.setText(chatResponse.getText().replaceFirst("\\n",""));
